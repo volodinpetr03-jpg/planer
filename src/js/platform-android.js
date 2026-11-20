@@ -1,0 +1,303 @@
+'use strict';
+// ============================================================
+//  Мост для телефона Android (Capacitor). На компьютере window.api даёт Electron (preload.js),
+//  здесь — тот же набор функций через встроенные модули Android: файлы, уведомления, «Поделиться».
+//  В обычном браузере ничего не делает.
+// ============================================================
+(function () {
+  if (window.api) return;
+  const C = window.Capacitor, X = window.capacitorExports;
+  if (!C || !X || !C.isNativePlatform || !C.isNativePlatform()) return;
+
+  const reg = n => X.registerPlugin(n);
+  const FS = reg('Filesystem'), Notif = reg('LocalNotifications'), Share = reg('Share'), AppP = reg('App'), PF = reg('PlanerFiles');
+  const DIR = 'DATA', DATA_FILE = 'planer-data.json', LOCK_FILE = 'planer-lock.json', LOG_FILE = 'planer-log.txt', BK = 'backups';
+  const listeners = {};
+  const emit = (ch, arg) => (listeners[ch] || []).forEach(f => { try { f(arg); } catch (e) { console.error(e); } });
+
+  // ---------- файлы ----------
+  async function readText(path, directory = DIR) { try { const r = await FS.readFile({ path, directory, encoding: 'utf8' }); return typeof r.data === 'string' ? r.data : null; } catch (e) { return null; } }
+  async function writeText(path, data, directory = DIR) { await FS.writeFile({ path, data, directory, encoding: 'utf8', recursive: true }); }
+  async function exists(path) { try { await FS.stat({ path, directory: DIR }); return true; } catch (e) { return false; } }
+  async function remove(path) { try { await FS.deleteFile({ path, directory: DIR }); } catch (e) {} }
+  async function log(msg, err) {
+    try {
+      const line = `[${new Date().toLocaleString('ru-RU')}] ${msg}${err ? ': ' + ((err && err.message) || err) : ''}\n`;
+      await FS.appendFile({ path: LOG_FILE, data: line, directory: DIR, encoding: 'utf8' }).catch(() => writeText(LOG_FILE, line));
+    } catch (e) {}
+  }
+  // запись через временный файл: при сбое посреди записи остаётся прежний файл
+  async function writeSafe(path, content) {
+    const tmp = path + '.tmp';
+    await writeText(tmp, content);
+    try { await remove(path); await FS.rename({ from: tmp, to: path, directory: DIR, toDirectory: DIR }); }
+    catch (e) { await writeText(path, content); await remove(tmp); }
+    const back = await readText(path);
+    if (back === null || back.length !== content.length) throw new Error('файл записан не полностью');
+  }
+  const parse = s => { try { return s ? JSON.parse(s) : null; } catch (e) { return undefined; } };
+  async function loadRaw() {
+    const main = parse(await readText(DATA_FILE)), tmp = parse(await readText(DATA_FILE + '.tmp'));
+    if (main) return main;
+    if (tmp) { log('Восстановлено из временного файла'); return tmp; }
+    if (main === undefined) { // файл повреждён — последняя резервная копия
+      log('Файл данных повреждён, беру резервную копию');
+      try { const L = (await FS.readdir({ path: BK, directory: DIR })).files.map(f => f.name || f).filter(n => /\.json$/.test(n)).sort(); for (let i = L.length - 1; i >= 0; i--) { const b = parse(await readText(BK + '/' + L[i])); if (b) return b; } } catch (e) {}
+    }
+    return null;
+  }
+  async function dailyBackup(content) {
+    try {
+      const d = new Date(), name = `planer-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
+      await writeText(BK + '/' + name, content);
+      const L = (await FS.readdir({ path: BK, directory: DIR })).files.map(f => f.name || f).filter(n => n.startsWith('planer-')).sort();
+      while (L.length > 14) await remove(BK + '/' + L.shift());
+    } catch (e) {}
+  }
+
+  // ---------- пароль и шифрование (WebCrypto: PBKDF2-SHA256 + AES-256-GCM) ----------
+  const enc = new TextEncoder(), dec = new TextDecoder();
+  const b64 = u => { let s = ''; const a = new Uint8Array(u); for (let i = 0; i < a.length; i += 0x8000) s += String.fromCharCode.apply(null, a.subarray(i, i + 0x8000)); return btoa(s); };
+  const ub = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  const rnd = n => crypto.getRandomValues(new Uint8Array(n));
+  const ITER = 310000;
+  let DEK = null, uiLocked = false, fails = 0, blockUntil = 0, data = null, lockCache;
+  async function kek(secret, salt, iter) {
+    const base = await crypto.subtle.importKey('raw', enc.encode(String(secret).normalize('NFKC')), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: ub(salt), iterations: iter || ITER }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  }
+  const aes = raw => crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  async function seal(key, bytes) { const iv = rnd(12), out = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes)); return { iv: b64(iv), tag: b64(out.slice(-16)), ct: b64(out.slice(0, -16)) }; }
+  async function unseal(key, o) { const ct = ub(o.ct), tag = ub(o.tag), all = new Uint8Array(ct.length + tag.length); all.set(ct); all.set(tag, ct.length); return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ub(o.iv) }, key, all)); }
+  async function readLock() { if (lockCache === undefined) lockCache = parse(await readText(LOCK_FILE)) || null; return lockCache; }
+  async function writeLock(L) { lockCache = L; if (L) await writeSafe(LOCK_FILE, JSON.stringify(L)); else await remove(LOCK_FILE); }
+  const RC_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const genCode = () => { const b = rnd(20); let s = ''; for (let i = 0; i < 20; i++) s += RC_ABC[b[i] % RC_ABC.length]; return s.match(/.{5}/g).join('-'); };
+  const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const isEnc = o => o && o.planerEncrypted === 1;
+  async function tryUnwrap(secret, salt, wrap, iter) { try { return await unseal(await kek(secret, salt, iter), wrap); } catch (e) { return null; } }
+  async function encryptObj(o) { return { planerEncrypted: 1, ...(await seal(await aes(DEK), enc.encode(JSON.stringify(o)))) }; }
+  async function decryptObj(o) { return JSON.parse(dec.decode(await unseal(await aes(DEK), o))); }
+  async function resolveLoaded(raw) { if (!isEnc(raw)) return raw; if (!DEK) return null; try { return await decryptObj(raw); } catch (e) { log('Не удалось расшифровать данные', e); return null; } }
+  async function recryptBackups(toEnc) {
+    try {
+      for (const f of (await FS.readdir({ path: BK, directory: DIR })).files.map(f => f.name || f)) {
+        const p = BK + '/' + f, o = parse(await readText(p)); if (!o) continue;
+        if (toEnc && !isEnc(o)) await writeText(p, JSON.stringify(await encryptObj(o)));
+        else if (!toEnc && isEnc(o)) { try { await writeText(p, JSON.stringify(await decryptObj(o))); } catch (e) {} }
+      }
+    } catch (e) {}
+  }
+  function guard() { const w = blockUntil - Date.now(); return w > 0 ? { ok: false, wait: w, error: `Слишком много попыток. Подождите ${Math.ceil(w / 1000)} с` } : null; }
+  function failed() { fails++; if (fails >= 5) blockUntil = Date.now() + 30000 * (fails - 4); return { ok: false, error: 'Неверный пароль', left: Math.max(0, 5 - fails), wait: Math.max(0, blockUntil - Date.now()) }; }
+
+  // ---------- сохранение ----------
+  let chain = Promise.resolve();
+  function saveData(d) {
+    const job = chain.then(async () => {
+      data = d; let obj = d;
+      if (await readLock()) { if (!DEK) throw new Error('данные заблокированы паролем'); obj = await encryptObj(d); }
+      const content = JSON.stringify(obj);
+      await writeSafe(DATA_FILE, content);
+      await dailyBackup(content);
+      scheduleSoon();
+    });
+    chain = job.catch(() => {});
+    return job;
+  }
+
+  // ---------- напоминания: системные уведомления, приходят и при закрытом приложении ----------
+  const CH = 'planer-remind';
+  let chReady = null, schedT = null, lastSig = '';
+  function ensureChannel() {
+    if (!chReady) chReady = (async () => {
+      let p = await Notif.checkPermissions(); if (p.display !== 'granted') p = await Notif.requestPermissions();
+      await Notif.createChannel({ id: CH, name: 'Напоминания', description: 'Задачи и платежи', importance: 5, visibility: 0, vibration: true, lights: true });
+      return p.display === 'granted';
+    })().catch(e => { chReady = null; console.warn(e); return false; });
+    return chReady;
+  }
+  const dueTs = t => { const [y, m, d] = t.date.split('-').map(Number), [hh, mm] = (t.time || '09:00').split(':').map(Number); return new Date(y, m - 1, d, hh, mm).getTime(); };
+  const nid = k => { let h = 7; for (const ch of String(k)) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h) % 2000000000 + 1; };
+  function upcoming(d) {
+    if (!d || !Array.isArray(d.tasks)) return [];
+    const now = Date.now(), until = now + 21 * 864e5, done = new Set((d.columns || []).filter(c => c.done).map(c => c.id)), out = [], cur = (d.settings && d.settings.currency) || '₽';
+    const fmt = s => s.split('-').reverse().join('.');
+    for (const t of d.tasks) {
+      if (t.archived || done.has(t.col)) continue;
+      const at = [];
+      if (t.remind != null && t.date) at.push(dueTs(t) - t.remind * 60000);
+      if (t.snooze) at.push(t.snooze);
+      for (const a of at) if (a > now && a < until) out.push({ key: t.id + ':' + a, at: a, kind: 'task', id: t.id, title: 'Напоминание: ' + t.title, body: (t.date ? `Срок: ${fmt(t.date)} ${t.time || ''}` : '') + (t.desc ? '\n' + t.desc.slice(0, 120) : '') });
+    }
+    for (const r of ((d.budget && d.budget.regular) || [])) {
+      if (r.active === false || r.remind == null || !r.nextDate) continue;
+      const [y, m, dd] = r.nextDate.split('-').map(Number), a = new Date(y, m - 1, dd, 10).getTime() - r.remind * 864e5;
+      if (a > now && a < until) out.push({ key: 'pay:' + r.id + ':' + r.nextDate, at: a, kind: 'pay', id: r.id, title: 'Платёж: ' + r.title, body: `${Number(r.amount).toLocaleString('ru-RU')} ${cur} · срок ${fmt(r.nextDate)}` });
+    }
+    return out.sort((a, b) => a.at - b.at).slice(0, 60);
+  }
+  function scheduleSoon() { clearTimeout(schedT); schedT = setTimeout(schedule, 1500); }
+  async function schedule() {
+    try {
+      const locked = !!(await readLock());
+      const list = upcoming(data).map(it => locked ? { ...it, title: 'Планер: напоминание', body: 'Откройте Планер, чтобы увидеть подробности' } : it);
+      const sig = JSON.stringify(list.map(i => [i.key, i.title, i.body]));
+      if (sig === lastSig) return;
+      if (!list.length && !lastSig) { lastSig = sig; return; }
+      if (!(await ensureChannel())) return;
+      const pend = await Notif.getPending();
+      if (pend.notifications.length) await Notif.cancel({ notifications: pend.notifications.map(n => ({ id: n.id })) });
+      if (list.length) await Notif.schedule({ notifications: list.map(it => ({ id: nid(it.key), title: it.title, body: it.body, largeBody: it.body, channelId: CH, smallIcon: 'ic_stat_planer', iconColor: '#4D8DFF', schedule: { at: new Date(it.at), allowWhileIdle: true }, extra: { kind: it.kind, id: it.id } })) });
+      lastSig = sig;
+    } catch (e) { log('Не удалось запланировать напоминания', e); }
+  }
+  Notif.addListener('localNotificationActionPerformed', a => {
+    const ex = (a && a.notification && a.notification.extra) || {};
+    if (uiLocked) return;
+    setTimeout(() => emit(ex.kind === 'pay' ? 'open-pay' : 'open-task', ex.id), 300);
+  }).catch(() => {});
+  // пока приложение открыто — окно напоминания внутри программы, как на компьютере
+  let active = true;
+  setInterval(() => {
+    if (!active || !data || !Array.isArray(data.tasks)) return;
+    const now = Date.now(), done = new Set((data.columns || []).filter(c => c.done).map(c => c.id)); data.notified = data.notified || {};
+    let ch = false;
+    for (const t of data.tasks) {
+      if (t.archived || done.has(t.col)) continue; const f = [];
+      if (t.remind != null && t.date) { const at = dueTs(t) - t.remind * 60000; f.push([t.id + ':' + at, at]); }
+      if (t.snooze) f.push([t.id + ':s' + t.snooze, t.snooze]);
+      for (const [k, at] of f) if (at <= now && now - at < 12 * 3600e3 && !data.notified[k]) { data.notified[k] = now; ch = true; emit('reminder', t.id); }
+    }
+    for (const r of ((data.budget && data.budget.regular) || [])) {
+      if (r.active === false || r.remind == null || !r.nextDate) continue;
+      const [y, m, d] = r.nextDate.split('-').map(Number), at = new Date(y, m - 1, d, 10).getTime() - r.remind * 864e5, k = 'pay:' + r.id + ':' + r.nextDate;
+      if (at <= now && now - at < 3 * 864e5 && !data.notified[k]) { data.notified[k] = now; ch = true; emit('reminder-pay', r.id); }
+    }
+    if (ch) emit('notified', data.notified);
+  }, 15000);
+
+  // ---------- системные события: «Назад», свернули, вернулись ----------
+  AppP.addListener('backButton', () => emit('back')).catch(() => {});
+  AppP.addListener('appStateChange', s => { active = !!s.isActive; emit(s.isActive ? 'resume' : 'pause'); if (!s.isActive) schedule(); }).catch(() => {});
+
+  // ---------- выбор и сохранение файлов ----------
+  const pickFile = accept => new Promise(res => {
+    const i = document.createElement('input'); i.type = 'file'; if (accept) i.accept = accept; i.style.display = 'none';
+    i.onchange = () => { const f = i.files && i.files[0]; i.remove(); if (!f) return res(null); f.text().then(res, () => res(null)); };
+    document.body.appendChild(i); i.click();
+  });
+  async function shareText(content, name, ext) {
+    const path = String(name || 'Планер').replace(/[\\/:*?"<>|]+/g, '_') + '.' + (ext || 'json');
+    const w = await FS.writeFile({ path, data: content, directory: 'CACHE', encoding: 'utf8' });
+    try { await Share.share({ title: path, files: [w.uri], dialogTitle: 'Сохранить или отправить' }); return path; }
+    catch (e) { if (/cancel/i.test(String(e && e.message))) return null; throw e; }
+  }
+
+  window.api = {
+    platform: 'android',
+    load: async () => {
+      const raw = await loadRaw();
+      if (isEnc(raw) && !DEK) { const L = (await readLock()) || {}; return { locked: true, hint: L.hint || '', wait: Math.max(0, blockUntil - Date.now()) }; }
+      data = await resolveLoaded(raw); scheduleSoon(); return data;
+    },
+    save: async d => {
+      if (!d || !Array.isArray(d.tasks)) return { ok: false, error: 'неверные данные' };
+      if (data && data.notified) d.notified = Object.assign({}, d.notified || {}, data.notified);
+      try { await saveData(d); return { ok: true }; } catch (e) { log('Ошибка сохранения', e); return { ok: false, error: (e && e.message) || String(e), path: 'память приложения' }; }
+    },
+    saveSync: d => { window.api.save(d); return true; },
+    reset: async () => { await remove(DATA_FILE); await remove(DATA_FILE + '.tmp'); data = null; return true; },
+    info: async () => {
+      let version = ''; try { version = (await AppP.getInfo()).version; } catch (e) {}
+      return { version, dataPath: 'Память телефона, папка приложения «Планер»', logPath: '', fileExists: await exists(DATA_FILE), autostart: false, platform: 'android' };
+    },
+    setAutostart: async () => false,
+    openFolder: async () => {},
+    exportData: async o => { if (typeof o === 'string') o = { content: o, name: 'Планер-копия', ext: 'json' }; return shareText(o.content, o.name, o.ext); },
+    importData: () => pickFile('application/json,.json'),
+    setZoom: f => { document.body.style.zoom = f || 1; },
+    titlebar: () => {},
+    quit: () => AppP.exitApp(),
+    minimize: () => { AppP.minimizeApp().catch(() => {}); },
+    exactAlarms: async () => { try { return (await Notif.checkExactNotificationSetting()).exact_alarm === 'granted'; } catch (e) { return true; } },
+    askExactAlarms: async () => { try { await Notif.changeExactNotificationSetting(); } catch (e) {} },
+    notifPermission: async () => { try { return (await Notif.checkPermissions()).display === 'granted'; } catch (e) { return false; } },
+    askNotif: async () => { chReady = null; return ensureChannel(); },
+    lock: {
+      status: async () => { const L = await readLock(); return { enabled: !!L, hint: L ? L.hint || '' : '', created: L ? L.created : null }; },
+      unlock: async pw => {
+        const g = guard(); if (g) return g;
+        const L = await readLock(); if (!L) return { ok: false, error: 'Пароль не включён' };
+        const key = await tryUnwrap(pw, L.salt, L.wp, L.iter); if (!key) return failed();
+        DEK = key; fails = 0; uiLocked = false; data = await resolveLoaded(await loadRaw()); scheduleSoon(); return { ok: true, data };
+      },
+      recover: async code => {
+        const g = guard(); if (g) return g;
+        const L = await readLock(); if (!L) return { ok: false, error: 'Пароль не включён' };
+        const key = await tryUnwrap(normCode(code), L.saltR, L.wr, L.iter); if (!key) { const r = failed(); r.error = 'Неверный код восстановления'; return r; }
+        DEK = key; fails = 0; uiLocked = false; data = await resolveLoaded(await loadRaw()); log('Вход по коду восстановления'); return { ok: true, data };
+      },
+      verify: async pw => {
+        const g = guard(); if (g) return g;
+        const L = await readLock(); if (!L) { uiLocked = false; return { ok: true }; }
+        if (!(await tryUnwrap(pw, L.salt, L.wp, L.iter))) return failed();
+        fails = 0; uiLocked = false; return { ok: true };
+      },
+      enable: async o => {
+        try {
+          if (await readLock()) return { ok: false, error: 'Пароль уже включён' };
+          if (!o || String(o.pw || '').length < 4) return { ok: false, error: 'Пароль слишком короткий' };
+          DEK = rnd(32);
+          const salt = b64(rnd(16)), saltR = b64(rnd(16)), code = genCode();
+          const L = { v: 1, kdf: 'pbkdf2', iter: ITER, salt, saltR, wp: await seal(await kek(o.pw, salt), DEK), wr: await seal(await kek(normCode(code), saltR), DEK), hint: String(o.hint || '').slice(0, 80), created: Date.now() };
+          await writeLock(L);
+          if (data) await saveData(data);
+          await recryptBackups(true); lastSig = ''; scheduleSoon(); log('Включён вход по паролю');
+          return { ok: true, code };
+        } catch (e) { log('Ошибка включения пароля', e); return { ok: false, error: e.message }; }
+      },
+      change: async o => {
+        const g = guard(); if (g) return g;
+        const L = await readLock(); if (!L) return { ok: false, error: 'Пароль не включён' };
+        const key = await tryUnwrap(o.old, L.salt, L.wp, L.iter); if (!key) return failed();
+        if (String(o.pw || '').length < 4) return { ok: false, error: 'Новый пароль слишком короткий' };
+        fails = 0; const salt = b64(rnd(16));
+        await writeLock({ ...L, salt, wp: await seal(await kek(o.pw, salt, L.iter), key), hint: String(o.hint || '').slice(0, 80) }); log('Пароль изменён'); return { ok: true };
+      },
+      setAfterRecovery: async o => {
+        const L = await readLock(); if (!L || !DEK) return { ok: false, error: 'Нет доступа' };
+        if (String(o.pw || '').length < 4) return { ok: false, error: 'Пароль слишком короткий' };
+        const salt = b64(rnd(16)), saltR = b64(rnd(16)), code = genCode();
+        await writeLock({ ...L, iter: ITER, salt, saltR, wp: await seal(await kek(o.pw, salt), DEK), wr: await seal(await kek(normCode(code), saltR), DEK), hint: String(o.hint || '').slice(0, 80) });
+        log('Новый пароль после восстановления'); return { ok: true, code };
+      },
+      newCode: async pw => {
+        const g = guard(); if (g) return g;
+        const L = await readLock(); if (!L) return { ok: false, error: 'Пароль не включён' };
+        const key = await tryUnwrap(pw, L.salt, L.wp, L.iter); if (!key) return failed();
+        fails = 0; const saltR = b64(rnd(16)), code = genCode();
+        await writeLock({ ...L, saltR, wr: await seal(await kek(normCode(code), saltR, L.iter), key) }); return { ok: true, code };
+      },
+      disable: async pw => {
+        const g = guard(); if (g) return g;
+        const L = await readLock(); if (!L) return { ok: true };
+        const key = await tryUnwrap(pw, L.salt, L.wp, L.iter); if (!key) return failed();
+        fails = 0; DEK = key; await recryptBackups(false);
+        await writeLock(null); if (data) await saveData(data); DEK = null; lastSig = ''; scheduleSoon(); log('Вход по паролю отключён');
+        return { ok: true };
+      },
+      lockUi: () => { readLock().then(L => { if (L) uiLocked = true; }); }
+    },
+    // общая папка для совместных проектов (папка, которую синхронизирует FolderSync с Google Диском)
+    files: {
+      hasAccess: async () => { try { return !!(await PF.hasAccess()).granted; } catch (e) { return false; } },
+      askAccess: async () => { try { await PF.askAccess(); } catch (e) {} },
+      list: async dir => { try { return (await FS.readdir({ path: dir, directory: 'EXTERNAL_STORAGE' })).files.map(f => ({ name: f.name, mtime: +f.mtime || 0, size: f.size || 0, type: f.type })); } catch (e) { return null; } },
+      read: async p => readText(p, 'EXTERNAL_STORAGE'),
+      write: async (p, content) => { await FS.writeFile({ path: p, data: content, directory: 'EXTERNAL_STORAGE', encoding: 'utf8', recursive: true }); return true; },
+      mkdir: async p => { try { await FS.mkdir({ path: p, directory: 'EXTERNAL_STORAGE', recursive: true }); } catch (e) {} return true; }
+    },
+    on: (ch, fn) => { (listeners[ch] = listeners[ch] || []).push(fn); }
+  };
+})();

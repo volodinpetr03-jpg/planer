@@ -1,0 +1,11 @@
+{
+  "appId": "local.d.planer",
+  "appName": "Планер",
+  "webDir": "../src",
+  "android": { "allowMixedContent": false, "captureInput": true, "webContentsDebuggingEnabled": false, "backgroundColor": "#131417" },
+  "plugins": {
+    "SystemBars": { "insetsHandling": "css", "style": "DEFAULT" },
+    "LocalNotifications": { "smallIcon": "ic_stat_planer", "iconColor": "#4D8DFF" },
+    "CapacitorHttp": { "enabled": false }
+  }
+}
