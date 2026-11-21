@@ -12,7 +12,7 @@ ICONS.ext = '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.
 ICONS.upload = '<path d="M12 15.5V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4.5 15v3.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V15"/>';
 const LAW_PORTAL = 'http://pravo.gov.ru/ips/';
 const LW = () => { if (!D.law) D.law = { docs: [], marks: [] }; return D.law; };
-const LF = { doc: null, art: null, tab: 'docs', q: '', chOpen: {} };
+const LF = { doc: null, art: null, tab: 'docs', q: '', open: {} };
 const LAWC = new Map();                 // id документа → статьи (из IndexedDB)
 let lawReady = null;
 
@@ -36,8 +36,11 @@ const artLabel = (d, a) => `${unitOf(d)} ${a.n} ${d.short || d.title}`;
 // ---------- разбор текста документа ----------
 const SHORTS = [[/об административных правонарушениях/i, 'КоАП РФ'], [/уголовно-процессуальный/i, 'УПК РФ'], [/гражданский процессуальный/i, 'ГПК РФ'], [/арбитражный процессуальный/i, 'АПК РФ'], [/административного судопроизводства/i, 'КАС РФ'], [/уголовно-исполнительный/i, 'УИК РФ'], [/градостроительный кодекс/i, 'ГрК РФ'], [/гражданский кодекс/i, 'ГК РФ'], [/трудовой кодекс/i, 'ТК РФ'], [/уголовный кодекс/i, 'УК РФ'], [/налоговый кодекс/i, 'НК РФ'], [/жилищный кодекс/i, 'ЖК РФ'], [/земельный кодекс/i, 'ЗК РФ'], [/семейный кодекс/i, 'СК РФ'], [/бюджетный кодекс/i, 'БК РФ'], [/лесной кодекс/i, 'ЛК РФ'], [/водный кодекс/i, 'ВК РФ'], [/воздушный кодекс/i, 'ВзК РФ'], [/конституция российской федерации/i, 'Конституция РФ']];
 const RX_ART = /^\s*Статья\s+(\d+(?:[.\-]\d+)*)\s*\.?\s*(.*)$/;
-const RX_CH = /^\s*(Раздел|Глава|Подраздел)\s+([IVXLCDM\d]+(?:\.\d+)*)\s*\.?\s*(.*)$/i;
-const isHead = (c, l) => c && l.length < 220 && !/[;,:]$/.test(l) && !/(настоящ|стать[еияю]|кодекса|закона)/i.test(c[3] || '');
+const RX_CH = /^\s*(Раздел|Глава|Подраздел|Часть|§)\s*([IVXLCDM\d]+(?:\.\d+)*|первая|вторая|третья|четв[её]ртая)\s*\.?\s*(.*)$/i;
+const CH_LVL = { 'часть': 0, 'раздел': 1, 'подраздел': 2, 'глава': 3, '§': 4 };
+const chLevel = w => CH_LVL[String(w).toLowerCase()] ?? 3;
+const chTitle = c => `${/^часть$/i.test(c[1]) ? 'Часть' : c[1] === '§' ? '§' : c[1].charAt(0).toUpperCase() + c[1].slice(1).toLowerCase()} ${/^[а-яё]+$/i.test(c[2]) ? c[2].toLowerCase() : c[2]}${c[3] ? '. ' + c[3] : ''}`;
+const isHead = (c, l) => c && l.length < 220 && !/[;,:]$/.test(l) && !/(настоящ|стать[еияю]|кодекса|закона)/i.test(c[3] || '') && (!/^часть$/i.test(c[1]) || /^[а-яё]+$/i.test(c[2])) && (c[1] !== '§' || l.length < 160);
 const JUNK = /^(КонсультантПлюс|Позиции высших судов|Документ предоставлен|www\.consultant\.ru|Дата сохранения|Путеводитель по|Подготовлено с использованием|Источник публикации|Примечание к документу|Перспективы и риски|Обзор изменений|См\. Путеводитель|Открыть полный текст|Текст документа)/i;
 const RX_PT = /^\s*(\d{1,4}(?:\(\d+\))?(?:\.\d+)?)\.\s+(\S.*)$/;
 const RX_SECT = /^\s*([IVXLCDM]+)\.\s+(\S.*)$/;
@@ -70,7 +73,7 @@ function lawParse(text) {
     for (const l of lines) {
       const m = l.match(RX_ART), c = !m && l.match(RX_CH);
       if (m) { push(); cur = { id: 'a' + arts.length, n: m[1], t: m[2].trim(), ch, body: [] }; continue; }
-      if (isHead(c, l)) { push(); const lvl = /раздел/i.test(c[1]) ? 0 : 1; chs = chs.slice(0, lvl); chs[lvl] = `${c[1]} ${c[2]}${c[3] ? '. ' + c[3] : ''}`; ch = chs.filter(Boolean).join(' › '); continue; }
+      if (isHead(c, l)) { push(); const lvl = chLevel(c[1]); chs = chs.slice(0, lvl); chs[lvl] = chTitle(c); ch = chs.filter(Boolean).join(' › '); continue; }
       if (cur) { if (!l && !cur.body.length) continue; if (!cur.t && !cur.body.length && l.length < 200 && !/^\d/.test(l)) cur.t = l; else cur.body.push(l); }
     }
     push();
@@ -80,7 +83,7 @@ function lawParse(text) {
   let fresh = true; // после заголовка раздела нумерация может начаться заново
   for (const l of lines) {
     const s = l.length < 220 && l.match(RX_SECT), c = !s && l.match(RX_CH), p = l.match(RX_PT);
-    if (s || isHead(c, l)) { push(); ch = s ? `${s[1]}. ${s[2]}` : `${c[1]} ${c[2]}${c[3] ? '. ' + c[3] : ''}`; fresh = true; continue; }
+    if (s || isHead(c, l)) { push(); ch = s ? `${s[1]}. ${s[2]}` : chTitle(c); fresh = true; continue; }
     if (/^(УТВЕРЖДЕН|ПРАВИЛА|ПОЛОЖЕНИЕ|ПОРЯДОК|ТРЕБОВАНИЯ|ПЕРЕЧЕНЬ|РЕГЛАМЕНТ)/.test(l) && l === l.toUpperCase()) { push(); fresh = true; continue; }
     if (p && (!cur || isNextPoint(cur.n, p[1]) || (fresh && parseFloat(p[1]) === 1))) {
       if (fresh && parseFloat(p[1]) === 1 && (cur || arts.length)) { push(); arts.forEach(a => { if (!/^вв/.test(a.n)) { a.n = 'вв.' + a.n; a.ch = a.ch || 'Вводная часть'; } }); } // пункты самого постановления до утверждённых правил
@@ -224,7 +227,7 @@ function artHtml(d, a, opts = {}) {
   const mk = markOf(d.id, a.id), ts = live().filter(t => (t.laws || []).some(l => l.doc === d.id && l.art === a.id));
   const L = lawArts(d.id), i = L.indexOf(a);
   return `<article class="lart">
-    <div class="lcrumb">${esc(d.short || d.title)}${a.ch ? ' › ' + esc(a.ch) : ''}</div>
+    <div class="lcrumb"><button class="lnk" data-act="lawCrumb" data-doc="${d.id}" data-k="">${esc(d.short || d.title)}</button>${a.ch ? a.ch.split(' › ').map((t, i, arr) => ` › <button class="lnk" data-act="lawCrumb" data-doc="${d.id}" data-k="${esc(arr.slice(0, i + 1).join(' › '))}">${esc(t)}</button>`).join('') : ''}</div>
     <h2>${d.unit === 'п' ? 'Пункт' : 'Статья'} ${esc(a.n)}${a.t && d.unit !== 'п' ? '. ' + esc(a.t) : ''}</h2>
     <div class="lbtns"><button class="btn sm ${mk ? 'pri' : ''}" data-act="lawMark" data-doc="${d.id}" data-art="${a.id}">${ic('bookmark')} ${mk ? 'В закладках' : 'В закладки'}</button><button class="btn sm" data-act="lawTask" data-doc="${d.id}" data-art="${a.id}">${ic('link')} К задаче</button><button class="btn sm ghost" data-act="lawCopy" data-doc="${d.id}" data-art="${a.id}">${ic('copy')} Копировать</button><button class="btn sm ghost" data-act="lawCheck" data-doc="${d.id}">${ic('ext')} Актуальная редакция</button></div>
     ${mk ? `<div class="lmk"><label class="f"><span>Заметка к статье</span><textarea class="in" data-lnote="${mk.id}" rows="2" placeholder="Своими словами: когда применять, на что обратить внимание">${esc(mk.note || '')}</textarea></label></div>` : ''}
@@ -260,10 +263,31 @@ function lawEmpty() {
 function lawDocView(d) {
   const L = lawArts(d.id);
   if (LF.art) { const a = lawArt(d.id, LF.art); if (a) return `<div class="lview">${MOB() ? `<button class="back" data-act="lawBackToc">${ic('left')} Оглавление</button>` : ''}${artHtml(d, a)}</div>`; }
-  const groups = []; L.forEach(a => { const g = groups[groups.length - 1]; if (!g || g.ch !== a.ch) groups.push({ ch: a.ch, items: [a] }); else g.items.push(a); });
+  const tree = lawTree(L), many = L.length > 60;
   return `<div class="lview"><div class="ldhead"><div><h2>${esc(d.short || d.title)}</h2>${d.short ? `<p>${esc(d.title)}</p>` : ''}<small>${L.length} ${d.unit === 'п' ? plural(L.length, ['пункт', 'пункта', 'пунктов']) : plural(L.length, ['статья', 'статьи', 'статей'])}${d.rev ? ' · редакция от ' + d.rev.split('-').reverse().join('.') : ''}</small></div>
     <div class="fbtn"><button class="btn sm" data-act="lawCheck" data-doc="${d.id}">${ic('ext')} Проверить актуальную редакцию</button>${d.url ? `<button class="btn sm ghost" data-act="lawOpenSite" data-id="${d.id}">${ic('ext')} На сайте</button>` : ''}<button class="btn sm ghost" data-act="lawEdit" data-doc="${d.id}">${ic('edit')} Свойства</button></div></div>
-    <div class="ltoc">${groups.map((g, gi) => `${g.ch ? `<h4>${esc(g.ch)}</h4>` : ''}${g.items.map(a => `<button class="ltocl" data-act="lawOpen" data-doc="${d.id}" data-art="${a.id}"><b>${unitOf(d)} ${esc(a.n)}</b><span>${esc(a.t || '')}</span>${markOf(d.id, a.id) ? ic('bookmark') : ''}</button>`).join('')}`).join('')}</div></div>`;
+    ${tree.kids.length ? `<div class="ltbar"><button class="btn sm ghost" data-act="lawTreeAll" data-doc="${d.id}" data-v="1">Развернуть всё</button><button class="btn sm ghost" data-act="lawTreeAll" data-doc="${d.id}" data-v="0">Свернуть всё</button></div>` : ''}
+    <div class="ltoc">${tree.arts.map(a => tocArt(d, a)).join('')}${tree.kids.map(k => tocNode(d, k, 0, many)).join('')}</div></div>`;
+}
+// оглавление деревом: Часть › Раздел › Глава › § › статьи
+function lawTree(L) {
+  const root = { kids: [], arts: [], map: new Map(), path: '' };
+  for (const a of L) {
+    let n = root;
+    (a.ch ? a.ch.split(' › ') : []).forEach(t => { let k = n.map.get(t); if (!k) { k = { title: t, kids: [], arts: [], map: new Map(), path: n.path ? n.path + ' › ' + t : t }; n.map.set(t, k); n.kids.push(k); } n = k; });
+    n.arts.push(a);
+  }
+  const cnt = n => n.n = n.arts.length + n.kids.reduce((s, k) => s + cnt(k), 0); cnt(root);
+  return root;
+}
+const treeKey = (d, path) => d.id + '|' + path;
+const tocArt = (d, a) => `<button class="ltocl" data-act="lawOpen" data-doc="${d.id}" data-art="${a.id}"><b>${unitOf(d)} ${esc(a.n)}</b><span>${esc(a.t || '')}</span>${markOf(d.id, a.id) ? ic('bookmark') : ''}</button>`;
+function tocNode(d, k, lvl, many) {
+  const key = treeKey(d, k.path), st = LF.open[key], open = st === undefined ? (!many || (lvl === 0 && k.kids.length > 0)) : st;
+  const sc = t => t && t === t.toUpperCase() && /[А-ЯЁ]{3}/.test(t) ? t.charAt(0) + t.slice(1).toLowerCase().replace(/российской федерации/g, 'Российской Федерации') : t;
+  const m = k.title.match(/^(Часть|Раздел|Подраздел|Глава|§)\s*([^.\s]+)\.?\s*(.*)$/i) || k.title.match(/^()([IVXLCDM]+\.)\s*(.*)$/);
+  const lab = m ? `<em>${esc((m[1] + ' ' + m[2]).trim())}</em>${m[3] ? '<span>' + esc(sc(m[3])) + '</span>' : ''}` : `<span>${esc(sc(k.title))}</span>`;
+  return `<div class="tg lv${Math.min(lvl, 3)} ${open ? 'open' : ''}" data-tk="${esc(key)}"><button class="tgh" data-act="lawGrp" data-k="${esc(key)}"><i class="tgc">${ic('caret')}</i>${lab}<small>${k.n}</small></button><div class="tgb">${k.arts.map(a => tocArt(d, a)).join('')}${k.kids.map(x => tocNode(d, x, lvl + 1, many)).join('')}</div></div>`;
 }
 function lawResults() {
   const R = lawSearch(LF.q); const words = LF.q.match(RX_REF) ? [] : lnorm(LF.q).split(/[^a-zа-я0-9.\-]+/).filter(w => w.length > 1).map(stem);
@@ -363,6 +387,14 @@ const lawChips = (t, rm) => (t.laws || []).map((l, i) => `<span class="lchip"><b
 function lawLink(doc, art) { const d = lawDoc(doc), a = lawArt(doc, art); return d && a ? { doc, art, label: artLabel(d, a) } : null; }
 
 Object.assign(ACT, {
+  lawGrp: b => { const k = b.dataset.k, el = b.closest('.tg'), on = !el.classList.contains('open'); el.classList.toggle('open', on); LF.open[k] = on; },
+  lawTreeAll: b => { const d = lawDoc(b.dataset.doc), on = b.dataset.v === '1'; if (!d) return; const walk = n => n.kids.forEach(k => { LF.open[treeKey(d, k.path)] = on; walk(k); }); walk(lawTree(lawArts(d.id))); render(); },
+  lawCrumb: b => {
+    const d = lawDoc(b.dataset.doc); if (!d) return; const path = b.dataset.k; closeSheet();
+    if (path) { const parts = path.split(' › '); parts.forEach((_, i) => { LF.open[treeKey(d, parts.slice(0, i + 1).join(' › '))] = true; }); }
+    LF.doc = d.id; LF.art = null; LF.q = ''; if (UI.view !== 'law') go('law'); else render();
+    if (path) setTimeout(() => { const el = [...document.querySelectorAll('.tg')].find(x => x.dataset.tk === treeKey(d, path)); if (el) { el.scrollIntoView({ block: 'start' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1300); } }, 30);
+  },
   lawTab: b => { LF.tab = b.dataset.v; render(); },
   lawDoc: b => { LF.doc = b.dataset.doc; LF.art = null; LF.q = ''; LF.scrollTop = true; render(); },
   lawOpen: b => { LF.doc = b.dataset.doc; LF.art = b.dataset.art; if (!b.dataset.q) LF.q = ''; else { LF.lastQ = LF.q; LF.q = ''; } LF.scrollTop = true; closeSheet(); if (UI.view !== 'law') go('law'); else render(); },
