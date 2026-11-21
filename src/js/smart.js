@@ -201,7 +201,7 @@ function openQuick(prefill, base) {
   modal(`<div class="mbox qbox"><div class="qhead">${MOB() ? `<button class="ib" data-act="mclose" aria-label="Закрыть">${ic('left')}</button>` : ic('spark')}<input id="qk" placeholder="${MOB() ? 'Позвонить маме завтра в 19 или кофе 250₽' : 'Например: «Позвонить маме завтра в 19:00 #семья» или «кофе 250₽»'}" autocomplete="off" enterkeyhint="done" value="${esc(prefill || '')}">${MOB() ? `<button class="btn pri sm" data-act="quickGo">Создать</button>` : ''}</div>
     <div class="qp" id="qkp"></div><div class="qsug" id="qks"></div>
     <div class="qfoot"><span class="hint mobhide"><kbd>Enter</kbd> создать · <kbd>↑</kbd><kbd>↓</kbd> подсказки · <kbd>Tab</kbd> задача/расход</span><span class="spacer"></span><button class="btn sm ghost" data-act="help" data-v="parser">Что понимает строка</button></div></div>`);
-  setTimeout(() => { const i = $('#qk'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); quickUpd(); }, 20);
+  setTimeout(() => { const i = $('#qk'); if (!i) return; i.focus(); i.setSelectionRange(i.value.length, i.value.length); quickUpd(); }, 20);
 }
 function quickUpd() {
   const v = $('#qk').value, p = parseSmart(v);
@@ -227,6 +227,7 @@ function sugApply(s, fromQuick) {
 function quickSubmit() {
   if (QK.sel >= 0 && QK.sug[QK.sel]) return sugApply(QK.sug[QK.sel], true);
   const v = $('#qk').value.trim(); if (!v) return;
+  if (typeof lawSearch === 'function' && RX_REF.test(v) && LAWC.size) { const h = lawSearch(v, 1); if (h[0] && h[0].exact) { closeModal(); LF.doc = h[0].d.id; LF.art = h[0].a.id; LF.q = ''; return go('law'); } }
   const p = parseSmart(v); if (QK.force === 'task') p.kind = 'task';
   if (p.kind === 'task' && !p.title) return toast('Не хватает названия задачи');
   closeModal(); createFromParse(p, { ...QK.base, forceTask: QK.force === 'task' });

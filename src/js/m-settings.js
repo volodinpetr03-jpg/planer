@@ -73,7 +73,7 @@ async function drawSettings() {
     const info = hasApi ? await window.api.info() : null;
     if (UI.settab !== 'data') return;
     h = `<div class="sline"><div class="tx"><b>Где лежат данные</b><span>Файл обновляется при каждом изменении. Раз в день делается резервная копия, хранятся последние 14.</span>${info ? `<div class="path">${esc(info.dataPath)}</div>` : ''}</div>${hasApi && !IS_PHONE ? '<button class="btn" data-act="folder">Открыть папку</button>' : ''}</div>
-      <div class="sline"><div class="tx"><b>Резервная копия</b><span>Всё: задачи, проекты, бюджет, настройки — одним файлом</span></div><button class="btn" data-act="exportAll">Сохранить копию…</button></div>
+      <div class="sline"><div class="tx"><b>Резервная копия</b><span>Всё: задачи, проекты, бюджет, настройки и правовая библиотека — одним файлом</span></div><button class="btn" data-act="exportAll">Сохранить копию…</button></div>
       <div class="sline"><div class="tx"><b>Восстановить из копии</b><span>Текущие данные заменятся данными из файла. Действие можно отменить.</span></div><button class="btn" data-act="importAll">Открыть копию…</button><input type="file" id="s-file" accept=".json" hidden></div>
       <div class="sline"><div class="tx"><b>Операции в Excel</b><span>Таблица CSV со всеми доходами и расходами — открывается в Excel</span></div><button class="btn" data-act="exportCsv" data-v="tx">Выгрузить операции</button></div>
       <div class="sline"><div class="tx"><b>Задачи в Excel</b><span>Таблица CSV со всеми задачами</span></div><button class="btn" data-act="exportCsv" data-v="tasks">Выгрузить задачи</button></div>
@@ -99,7 +99,7 @@ async function saveFile(content, name, ext) {
   else { try { await navigator.clipboard.writeText(content); toast('Скопировано в буфер обмена'); } catch (e) { toast('Не удалось скопировать'); } }
 }
 function importText(txt) {
-  try { const o = JSON.parse(txt); if (!o || !Array.isArray(o.tasks)) throw 0; snapU(); D = normalize(o); D.demo = false; save(); closeModal(); applyAppearance(); render(); toast('Данные восстановлены из копии', true); }
+  try { const o = JSON.parse(txt); if (!o || !Array.isArray(o.tasks)) throw 0; if (Array.isArray(o.lawTexts)) { o.lawTexts.forEach(x => { LAWC.set(x.id, x.arts); lawDB.put(x).catch(() => {}); }); delete o.lawTexts; } snapU(); D = normalize(o); D.demo = false; save(); closeModal(); applyAppearance(); render(); toast('Данные восстановлены из копии', true); }
   catch (e) { toast('Этот файл не похож на копию планера'); }
 }
 Object.assign(ACT, {
@@ -116,7 +116,7 @@ Object.assign(ACT, {
   tagDel: b => { snapU(); const id = b.dataset.id; D.tags = D.tags.filter(t => t.id !== id); D.tasks.forEach(t => t.tags = (t.tags || []).filter(x => x !== id)); B().tx.forEach(t => t.tags = (t.tags || []).filter(x => x !== id)); TF.tags.delete(id); save(); drawSettings(); render(); toast('Тег удалён', true); },
   quit: () => window.api.quit(), folder: () => window.api.openFolder(),
   askNotif: async () => { await window.api.askNotif(); drawSettings(); }, askExact: async () => { await window.api.askExactAlarms(); setTimeout(drawSettings, 1500); },
-  exportAll: () => { const d = new Date(); saveFile(JSON.stringify(D, null, 1), `Планер-копия-${ymd(d)}`, 'json'); if (LK.status.enabled) setTimeout(() => toast('Внимание: копия в файле не зашифрована — храните её в надёжном месте'), 1500); },
+  exportAll: async () => { const d = new Date(); let o = D; if (LW().docs.length) { await lawLoad(); o = { ...D, lawTexts: LW().docs.map(x => ({ id: x.id, arts: lawArts(x.id) })) }; } saveFile(JSON.stringify(o, null, 1), `Планер-копия-${ymd(d)}`, 'json'); if (LK.status.enabled) setTimeout(() => toast('Внимание: копия в файле не зашифрована — храните её в надёжном месте'), 1500); },
   importAll: async () => { if (hasApi) { const txt = await window.api.importData(); if (txt) importText(txt); } else $('#s-file').click(); },
   exportCsv: b => {
     let rows;
