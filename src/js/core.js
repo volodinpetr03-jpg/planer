@@ -83,7 +83,7 @@ const COLORS = ['#4d8dff', '#3ecf8e', '#f2b441', '#ff6b5e', '#a26bfa', '#2ec4c9'
 let D = null, saveT = null;
 const undoStack = [];
 const DEF_SETTINGS = { closeToTray: true, sound: true, theme: 'dark', accent: '#4d8dff', font: 'Inter', fontSize: 14, zoom: 1, collapsed: false, currency: '₽', startView: 'dashboard', tourDone: false, showSub: false,
-  calTypes: { tasks: true, pays: true, exp: true, dl: true, dates: true },
+  calTypes: { tasks: true, pays: true, exp: true, dl: true, dates: true, ext: true },
   modules: { dashboard: true, board: true, calendar: true, projects: true, budget: true, insights: true, auto: true },
   smart: { parser: true, scoring: true, overload: true, autocat: true, suggest: true, rules: true },
   capacity: [180, 360, 360, 360, 360, 360, 180], defDur: 30 };
@@ -152,6 +152,7 @@ function normalize(d) {
   d.focusLog = Array.isArray(d.focusLog) ? d.focusLog : [];
   d.habits = Array.isArray(d.habits) ? d.habits : [];
   d.notes = Array.isArray(d.notes) ? d.notes : [];
+  d.icals = Array.isArray(d.icals) ? d.icals : [];
   const bb = d.budget || {}; const db = defBudget();
   d.budget = { accounts: Array.isArray(bb.accounts) && bb.accounts.length ? bb.accounts : db.accounts, categories: Array.isArray(bb.categories) && bb.categories.length ? bb.categories : db.categories, tx: (bb.tx || []).map(x => newTx(x)), regular: bb.regular || [] };
   const ids = new Set(d.columns.map(c => c.id));

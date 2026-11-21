@@ -8,6 +8,7 @@ function agenda(days) {
   for (let i = 0; i < days; i++) {
     const d = addDays(td, i), items = [];
     D.projects.filter(p => p.deadline === d && p.status !== 'archived' && p.status !== 'done').forEach(p => items.push(`<div class="lrow" data-act="openProject" data-id="${p.id}" style="--c:${p.color}"><span class="dot"></span><div class="tx"><b>Срок проекта: ${esc(p.title)}</b><small>${projStats(p).pct}% готово</small></div></div>`));
+    extOn(d).forEach(x => items.push(`<div class="lrow ext" ${extAttr(x)}><span class="dot"></span><div class="tx"><b>${esc(x.t)}</b><small>${extTime(x)} · ${esc(x.c.name || 'внешний календарь')}</small></div></div>`));
     datesOn(d).forEach(x => { const yrs = dateYears(x, d); items.push(`<div class="lrow" data-act="dateEdit" data-id="${x.id}" style="--c:var(--mid)"><span class="emo">${(DKIND[x.kind] || DKIND.other)[1]}</span><div class="tx"><b>${esc(x.title)}</b><small>${(DKIND[x.kind] || DKIND.other)[0].toLowerCase()}${yrs > 0 ? ' · ' + yrs + ' ' + plural(yrs, ['год', 'года', 'лет']) : ''}</small></div></div>`); });
     regularOn(d).forEach(r => items.push(`<div class="lrow" data-act="openReg" data-id="${r.id}" style="--c:var(--exp)"><span class="dot"></span><div class="tx"><b>${esc(r.title)}</b><small>регулярный платёж</small></div><span class="am exp">${money0(r.amount)}</span></div>`));
     live().filter(t => t.date === d && !isDone(t)).sort((a, b) => (a.time || '99').localeCompare(b.time || '99')).forEach(t => items.push(taskLine(t, { noCol: true })));

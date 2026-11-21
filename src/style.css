@@ -1234,3 +1234,14 @@ body.mob .nbody{min-height:50vh}
 .cqbox{position:relative}
 .ib.cqmic{position:absolute;right:.5rem;top:.5rem}
 .cmin .ib.mic{align-self:center}
+/* ---- 3.16: внешние календари ---- */
+.ad.ext,.mi.ext{background:color-mix(in srgb,var(--c) 16%,transparent);border-left-color:var(--c);cursor:pointer}
+.blk.ext{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--c) 22%,var(--card)) 0 6px,color-mix(in srgb,var(--c) 14%,var(--card)) 6px 12px);border-left:3px solid var(--c);cursor:pointer}
+.lrow.ext .dot{background:var(--c);border-radius:50%}
+.exdot{display:inline-block;width:.75rem;height:.75rem;border-radius:50%;background:var(--c);margin-right:.45rem;vertical-align:.05rem}
+.icrow{display:flex;align-items:center;gap:.7rem;padding:.6rem 0;border-bottom:1px solid var(--line)}
+.icrow .tx{flex:1;min-width:0}.icrow .tx b{display:flex;align-items:center}
+.icrow small{display:block;color:var(--mute);font-size:.82rem}
+.icrow .icu{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.7}
+.ichelp{margin-top:1rem}.ichelp summary{cursor:pointer;color:var(--mute)}.ichelp li{margin:.3rem 0}
+.exdesc{white-space:normal;color:var(--mute);max-height:14rem;overflow:auto}

@@ -25,12 +25,14 @@ function vWeek() {
     const pays = CT().pays ? regularOn(d).map(r => `<div class="ad pay" data-act="openReg" data-id="${r.id}" title="${esc(r.title)} — ${money(r.amount)}">${ic('coin')} ${esc(r.title)} · ${money0(r.amount)}</div>`) : [];
     const dls = CT().dl ? D.projects.filter(p => p.deadline === d && p.status !== 'archived').map(p => `<div class="ad dl" data-act="openProject" data-id="${p.id}" style="--c:${p.color}">Срок: ${esc(p.title)}</div>`) : [];
     const dts = CT().dates !== false ? datesOn(d).map(x => `<div class="ad idt" data-act="dateEdit" data-id="${x.id}" title="${esc(x.title)}">${(DKIND[x.kind] || DKIND.other)[1]} ${esc(x.title)}</div>`) : [];
-    return `<div data-adrop="${d}">${dts.join('')}${dls.join('')}${pays.join('')}${items.join('')}</div>`;
+    const exa = extOn(d).filter(x => !x.st || x.d !== d).map(x => `<div class="ad ext" ${extAttr(x)}>${x.st && x.d !== d ? '↳ ' : ''}${esc(x.t)}</div>`);
+    return `<div data-adrop="${d}">${dts.join('')}${exa.join('')}${dls.join('')}${pays.join('')}${items.join('')}</div>`;
   }).join('')}</div>`;
   const n = new Date(), nm = n.getHours() * 60 + n.getMinutes();
   const cols = days.map(d => {
-    const it = wkLayout(L.filter(t => t.date === d && t.time).map(t => { const s = toMin(t.time); return { t, s, e: Math.min(1440, s + Math.max(t.dur || 30, 15)) }; }));
-    return `<div class="dcol ${d === td ? 'tod' : ''}" data-day="${d}" style="height:${24 * H}px">${it.map(({ t, s, e, lane, lanes }) => `<div class="blk p${t.prio} ${isDone(t) ? 'done' : ''}" data-id="${t.id}" style="--c:${tagColor(t)};top:${s / 60 * H + 1}px;height:${Math.max((e - s) / 60 * H - 3, 20)}px;left:calc(${lane / lanes * 100}% + 3px);width:calc(${100 / lanes}% - 6px)" title="${esc(t.title)}"><b>${esc(t.title)}</b><span>${t.time}–${fromMin(e)}</span><span class="bi">${t.remind != null ? ic('bell') : ''}${t.repeat ? ic('repeat') : ''}</span><i class="rs"></i></div>`).join('')}${d === td ? `<div class="nowl" style="top:${nm / 60 * H}px"></div>` : ''}</div>`;
+    const it = wkLayout(L.filter(t => t.date === d && t.time).map(t => { const s = toMin(t.time); return { t, s, e: Math.min(1440, s + Math.max(t.dur || 30, 15)) }; })
+      .concat(extOn(d).filter(x => x.st && x.d === d).map(x => { const s = toMin(x.st); return { x, s, e: x.de > x.d ? 1440 : Math.min(1440, Math.max(s + 15, toMin(x.et || x.st))) }; })));
+    return `<div class="dcol ${d === td ? 'tod' : ''}" data-day="${d}" style="height:${24 * H}px">${it.map(({ t, x, s, e, lane, lanes }) => x ? `<div class="blk ext" ${extAttr(x, true)} style="--c:${x.c.color};top:${s / 60 * H + 1}px;height:${Math.max((e - s) / 60 * H - 3, 20)}px;left:calc(${lane / lanes * 100}% + 3px);width:calc(${100 / lanes}% - 6px)"><b>${esc(x.t)}</b><span>${extTime(x)}</span></div>` : `<div class="blk p${t.prio} ${isDone(t) ? 'done' : ''}" data-id="${t.id}" style="--c:${tagColor(t)};top:${s / 60 * H + 1}px;height:${Math.max((e - s) / 60 * H - 3, 20)}px;left:calc(${lane / lanes * 100}% + 3px);width:calc(${100 / lanes}% - 6px)" title="${esc(t.title)}"><b>${esc(t.title)}</b><span>${t.time}–${fromMin(e)}</span><span class="bi">${t.remind != null ? ic('bell') : ''}${t.repeat ? ic('repeat') : ''}</span><i class="rs"></i></div>`).join('')}${d === td ? `<div class="nowl" style="top:${nm / 60 * H}px"></div>` : ''}</div>`;
   }).join('');
   const nd = live().filter(t => !t.date && !isDone(t)).sort(byOrder);
   const wpays = []; days.forEach(d => regularOn(d).forEach(r => wpays.push({ r, d })));
@@ -46,7 +48,7 @@ function vMonth() {
   <div class="mgrid" style="grid-template-rows:repeat(${cells.length / 7},minmax(0,1fr))">${cells.map(s => {
     const it = L.filter(t => t.date === s).sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
     const pays = CT().pays ? regularOn(s) : [], dls = CT().dl ? D.projects.filter(p => p.deadline === s && p.status !== 'archived') : [], e = CT().exp ? dayExp(s) : 0;
-    const rows = (CT().dates !== false ? datesOn(s) : []).map(x => `<span class="mi idt">${(DKIND[x.kind] || DKIND.other)[1]} ${esc(x.title)}</span>`).concat(dls.map(p => `<span class="mi dl" style="--c:${p.color}">Срок: ${esc(p.title)}</span>`)).concat(pays.map(r => `<span class="mi pay">${esc(r.title)} · ${money0(r.amount)}</span>`)).concat(it.map(t => `<span class="mi ${isDone(t) ? 'done' : ''}" draggable="true" data-id="${t.id}" style="--c:${tagColor(t)}">${t.time ? t.time + ' ' : ''}${esc(t.title)}</span>`));
+    const rows = extOn(s).map(x => `<span class="mi ext" style="--c:${x.c.color}">${x.st && x.d === s ? x.st + ' ' : ''}${esc(x.t)}</span>`).concat((CT().dates !== false ? datesOn(s) : []).map(x => `<span class="mi idt">${(DKIND[x.kind] || DKIND.other)[1]} ${esc(x.title)}</span>`).concat(dls.map(p => `<span class="mi dl" style="--c:${p.color}">Срок: ${esc(p.title)}</span>`)).concat(pays.map(r => `<span class="mi pay">${esc(r.title)} · ${money0(r.amount)}</span>`)).concat(it.map(t => `<span class="mi ${isDone(t) ? 'done' : ''}" draggable="true" data-id="${t.id}" style="--c:${tagColor(t)}">${t.time ? t.time + ' ' : ''}${esc(t.title)}</span>`)));
     return `<div class="mc ${mkey(s) !== k ? 'out' : ''} ${s === td ? 'tod' : ''}" data-act="calDay" data-d="${s}" data-mdrop="${s}" tabindex="0" role="button" aria-label="${dayLong(s)}"><div class="mtop"><span class="mn">${pd(s).getDate()}</span>${e ? `<span class="mexp">−${NF0.format(e)}</span>` : ''}</div>${SM().overload && loadOf(s) > capOf(s) && s >= td ? '<span class="mover">перегруз</span>' : ''}${rows.slice(0, 4).join('')}${rows.length > 4 ? `<span class="more">ещё ${rows.length - 4}</span>` : ''}</div>`;
   }).join('')}</div></div>`;
 }
@@ -59,9 +61,9 @@ registerModule({
     else if (CF.mode === 'week') { const we = addDays(CF.ws, 6), x = pd(CF.ws), y = pd(we); title = (x.getMonth() === y.getMonth() ? `${x.getDate()}–${y.getDate()} ${MG[y.getMonth()]}` : `${x.getDate()} ${MGS[x.getMonth()]} – ${y.getDate()} ${MGS[y.getMonth()]}`) + ' ' + y.getFullYear(); }
     else title = mTitle(CF.month);
     nav = `<div class="chips"><button class="ib" data-act="calPrev" aria-label="Назад" title="Назад  ←">${ic('left')}</button><button class="btn sm" data-act="calToday">Сегодня</button><button class="ib" data-act="calNext" aria-label="Вперёд" title="Вперёд  →">${ic('right')}</button></div>`;
-    const T = [['tasks', 'Задачи'], ['pays', 'Платежи'], ['exp', 'Расходы'], ['dl', 'Сроки проектов'], ['dates', 'Важные даты']];
+    const T = [['tasks', 'Задачи'], ['pays', 'Платежи'], ['exp', 'Расходы'], ['dl', 'Сроки проектов'], ['dates', 'Важные даты']].concat(IC().length ? [['ext', 'Внешние']] : []);
     return `<h1 style="min-width:15rem">${title}</h1>${nav}<div class="subtabs"><button class="${CF.mode === 'week' ? 'on' : ''}" data-act="calMode" data-v="week">${MOB() ? 'День' : 'Неделя'}</button><button class="${CF.mode === 'month' ? 'on' : ''}" data-act="calMode" data-v="month">Месяц</button></div><span class="sep"></span>
-      <div class="chips">${T.map(([k, l]) => `<button class="chip ${CT()[k] ? 'on' : ''}" data-act="calType" data-v="${k}" aria-pressed="${CT()[k]}">${l}</button>`).join('')}</div>`;
+      <div class="chips">${T.map(([k, l]) => `<button class="chip ${CT()[k] !== false ? 'on' : ''}" data-act="calType" data-v="${k}" aria-pressed="${CT()[k] !== false}">${l}</button>`).join('')}<button class="chip" data-act="icPanel" title="Подписаться на Google, Яндекс или Outlook календарь">${ic('rss')} Подписки</button></div>`;
   },
   render() { if (MOB() && CF.mode === 'week') { UI.calDate = CF.day; return vWeek(); } UI.calDate = CF.mode === 'week' ? (today() >= CF.ws && today() <= addDays(CF.ws, 6) ? today() : CF.ws) : (mkey(today()) === CF.month ? today() : CF.month + '-01'); return CF.mode === 'week' ? vWeek() : vMonth(); },
   before() { const w = $('#wkb'); if (w) CF.scroll = w.scrollTop; },
@@ -78,7 +80,7 @@ Object.assign(ACT, {
   calNext: () => { if (CF.mode === 'week' && MOB()) CF.day = addDays(CF.day, 1); else if (CF.mode === 'week') CF.ws = addDays(CF.ws, 7); else CF.month = mAdd(CF.month, 1); render(); },
   calToday: () => { CF.day = today(); CF.ws = weekStart(today()); CF.month = mkey(today()); CF.scroll = null; render(); },
   calMode: b => { CF.mode = b.dataset.v; render(); },
-  calType: b => { const k = b.dataset.v; CT()[k] = !CT()[k]; save(); render(); },
+  calType: b => { const k = b.dataset.v; CT()[k] = CT()[k] === false; save(); render(); },
   calNew: b => openTaskForm(null, { date: b.dataset.d }),
   calDay: b => { CF.mode = 'week'; CF.day = b.dataset.d; CF.ws = weekStart(b.dataset.d); CF.scroll = null; render(); }
 });
