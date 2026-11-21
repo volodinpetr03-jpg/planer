@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('api', {
   },
   ai: req => ipcRenderer.invoke('ai-chat', req),
   netGet: url => ipcRenderer.invoke('net-get', url),
+  notify: o => ipcRenderer.send('notify', o),
   docPdf: o => ipcRenderer.invoke('doc-pdf', o),
   docSave: o => ipcRenderer.invoke('doc-save', o),
   files: {

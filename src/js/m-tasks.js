@@ -18,6 +18,7 @@ function matchF(t, f = TF.filter) {
   if (f === 'over') return !dn && !!t.date && t.date < td;
   if (f === 'nodate') return !t.date;
   if (f === 'mine') return shareOn() && t.who === SH().me.id;
+  if (f === 'given') return shareOn() && t.asg === SH().me.id && !!t.who && t.who !== SH().me.id;
   return true;
 }
 const matchT = t => !TF.tags.size || (t.tags || []).some(x => TF.tags.has(x)) || (TF.tags.has('_') && !(t.tags || []).length);
@@ -73,7 +74,7 @@ registerModule({
   badge: () => live().filter(t => !isDone(t) && t.date && t.date < today()).length || '',
   bar() {
     const L = live(), td = today(), act = L.filter(t => !isDone(t)), over = act.filter(t => t.date && t.date < td).length, tod = act.filter(t => t.date === td).length;
-    const F = [['all', 'Все'], ['today', 'На сегодня'], ['week', 'Неделя'], ['over', 'Просрочено'], ['nodate', 'Без даты']].concat(shareOn() ? [['mine', 'Мои']] : []);
+    const F = [['all', 'Все'], ['today', 'На сегодня'], ['week', 'Неделя'], ['over', 'Просрочено'], ['nodate', 'Без даты']].concat(shareOn() ? [['mine', 'Мои'], ['given', 'Поручено мной']] : []);
     const cnt = f => L.filter(t => matchF(t, f) && (f === 'all' || f === 'nodate' ? !isDone(t) : true)).length;
     return `<h1>Доска</h1><div class="stats"><span><b>${act.length}</b> в работе</span><span><b>${tod}</b> на сегодня</span><span class="${over ? 'red' : ''}"><b>${over}</b> просрочено</span></div><span class="sep"></span>
       <div class="chips">${F.map(([k, l]) => `<button class="chip ${TF.filter === k ? 'on' : ''}" data-act="tfilter" data-v="${k}">${l} <span class="n">${cnt(k)}</span></button>`).join('')}</div>
@@ -161,7 +162,7 @@ function taskHint() {
 function readTaskForm() {
   const t = UI.form.t;
   t.title = $('#f-title').value.trim(); t.desc = $('#f-desc').value.trim(); t.col = $('#f-col').value; t.project = $('#f-proj').value || null; t.parent = $('#f-parent').value || null;
-  if ($('#f-who')) t.who = isShared(projOf(t.project)) ? ($('#f-who').value || null) : (t.who || null);
+  if ($('#f-who')) { const prev = (byId(t.id) || {}).who || null; t.who = isShared(projOf(t.project)) ? ($('#f-who').value || null) : (t.who || null); if (t.who !== prev) t.asg = t.who ? SH().me.id : null; }
   const nd = $('#f-date').value || null; if (!UI.form.isNew) { const o = byId(t.id); if (o && o.date && nd && nd > o.date) t.postponed = (o.postponed || 0) + 1; }
   t.date = nd; t.time = t.date ? ($('#f-time').value || null) : null; t.dur = +$('#f-dur').value || null;
   t.remind = t.date && $('#f-rem').value !== '' ? Number($('#f-rem').value) : null; t.repeat = t.date ? ($('#f-rep').value || null) : null;

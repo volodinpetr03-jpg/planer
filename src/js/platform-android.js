@@ -123,8 +123,10 @@
     if (!d || !Array.isArray(d.tasks)) return [];
     const now = Date.now(), until = now + 21 * 864e5, done = new Set((d.columns || []).filter(c => c.done).map(c => c.id)), out = [], cur = (d.settings && d.settings.currency) || '₽';
     const fmt = s => s.split('-').reverse().join('.');
+    const meId = d.share && d.share.me && d.share.me.id, mineOnly = meId && d.share.remMine !== false;
     for (const t of d.tasks) {
       if (t.archived || done.has(t.col)) continue;
+      if (mineOnly && t.who && t.who !== meId) continue;
       const at = [];
       if (t.remind != null && t.date) at.push(dueTs(t) - t.remind * 60000);
       if (t.snooze) at.push(t.snooze);
@@ -163,8 +165,9 @@
     if (!active || !data || !Array.isArray(data.tasks)) return;
     const now = Date.now(), done = new Set((data.columns || []).filter(c => c.done).map(c => c.id)); data.notified = data.notified || {};
     let ch = false;
+    const meId = data.share && data.share.me && data.share.me.id, mineOnly = meId && data.share.remMine !== false;
     for (const t of data.tasks) {
-      if (t.archived || done.has(t.col)) continue; const f = [];
+      if (t.archived || done.has(t.col) || (mineOnly && t.who && t.who !== meId)) continue; const f = [];
       if (t.remind != null && t.date) { const at = dueTs(t) - t.remind * 60000; f.push([t.id + ':' + at, at]); }
       if (t.snooze) f.push([t.id + ':s' + t.snooze, t.snooze]);
       for (const [k, at] of f) if (at <= now && now - at < 12 * 3600e3 && !data.notified[k]) { data.notified[k] = now; ch = true; emit('reminder', t.id); }
@@ -296,6 +299,9 @@
           data: { model: req.model, messages: req.messages, temperature: req.temperature, max_tokens: req.maxTokens } });
         return { status: r.status, text: typeof r.data === 'string' ? r.data : JSON.stringify(r.data) };
       } catch (e) { return { status: 0, text: '', error: /timeout/i.test(String(e && e.message)) ? 'timeout' : String((e && e.message) || e) }; }
+    },
+    notify: async o => {
+      try { if (!(await ensureChannel())) return; await Notif.schedule({ notifications: [{ id: nid('n' + Date.now() + Math.random()), title: String(o.title || 'Планер'), body: String(o.body || ''), largeBody: String(o.body || ''), channelId: CH, smallIcon: 'ic_stat_planer', iconColor: '#4D8DFF', schedule: { at: new Date(Date.now() + 800), allowWhileIdle: true }, extra: { kind: 'task', id: o.task || '' } }] }); } catch (e) {}
     },
     netGet: async url => {
       let u; try { u = new URL(String(url)); } catch (e) { return { status: 0, error: 'неверная ссылка' }; }

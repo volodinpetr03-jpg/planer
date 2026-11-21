@@ -171,11 +171,12 @@ function dueTs(t) {
 }
 function checkReminders() {
   if (!data || !Array.isArray(data.tasks)) return;
-  const now = Date.now(), doneCols = new Set((data.columns || []).filter(c => c.done).map(c => c.id));
+  const now = Date.now(), doneCols = new Set((data.columns || []).filter(c => c.done).map(c => c.id)), meId = data.share && data.share.me && data.share.me.id;
   data.notified = data.notified || {};
   let changed = false;
   for (const t of data.tasks) {
     if (t.archived || doneCols.has(t.col)) continue;
+    if (meId && data.share.remMine !== false && t.who && t.who !== meId) continue; // общая задача другого исполнителя
     const fire = [];
     if (t.remind !== null && t.remind !== undefined && t.date) {
       const at = dueTs(t) - t.remind * 60000;
@@ -210,6 +211,7 @@ function checkReminders() {
 }
 
 // ---------- IPC ----------
+ipcMain.on('notify', (e, o) => { if (!o) return; notify(String(o.title || 'Планер').slice(0, 120), String(o.body || '').slice(0, 300), () => { showWindow(); if (o.task) win.webContents.send('open-task', String(o.task)); }); });
 function resolveLoaded(raw) {
   if (!isEnc(raw)) return raw;
   if (!DEK) return null;

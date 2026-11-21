@@ -122,8 +122,9 @@ function showPayAlert(id) {
 }
 function webReminders() {
   const now = Date.now(); let ch = false;
+  const meId = shareOn() && SH().remMine !== false ? SH().me.id : null;
   for (const t of live()) {
-    if (isDone(t)) continue; const f = [];
+    if (isDone(t) || (meId && t.who && t.who !== meId)) continue; const f = [];
     if (t.remind != null && t.date) { const [y, m, d] = t.date.split('-').map(Number), [hh, mm] = (t.time || '09:00').split(':').map(Number); const at = new Date(y, m - 1, d, hh, mm).getTime() - t.remind * 60000; f.push([t.id + ':' + at, at]); }
     if (t.snooze) f.push([t.id + ':s' + t.snooze, t.snooze]);
     for (const [k, at] of f) if (at <= now && now - at < 12 * 3600e3 && !D.notified[k]) { D.notified[k] = now; ch = true; showAlert(t.id); }

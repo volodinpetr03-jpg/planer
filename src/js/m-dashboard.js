@@ -48,6 +48,7 @@ registerModule({
       <div class="kpi" data-act="btab" data-v="accounts"><span>${ic('wallet')} На счетах</span><b>${money0(totalBalance())}</b><small>сальдо месяца ${money(inc - exp, true)}</small></div>` : ''}
       ${modOn('projects') ? `<div class="kpi" data-act="go" data-v="projects"><span>${ic('proj')} Проекты</span><b>${act.length}</b><small>${act.length ? 'в среднем ' + Math.round(act.reduce((a, p) => a + projStats(p).pct, 0) / act.length) + '% готово' : 'активных нет'}</small></div>` : ''}
     </div>
+    ${givenHtml()}
     <div class="grid3" style="margin-bottom:1rem">
       <section class="pan"><div class="ph2"><h2>План на сегодня</h2><small>${plan.length} ${plural(plan.length, PT)}</small><span class="spacer"></span></div>
         ${modOn('board') ? `<form class="cadd" data-col="${firstCol().id}" data-date="${td}" style="padding:0 0 .5rem"><input placeholder="+ Задача на сегодня — Enter" aria-label="Задача на сегодня"></form>` : ''}

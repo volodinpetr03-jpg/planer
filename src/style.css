@@ -961,3 +961,12 @@ mark.soft{background:color-mix(in srgb,var(--mid) 14%,transparent)}
 .ltocl{align-items:flex-start}
 .ltocl span{min-width:0;overflow-wrap:anywhere;line-height:1.45}
 .tgh em{min-width:5.2rem}.tn.lv0>.tgh em{min-width:6.2rem}body.mob .tgh em{min-width:4.4rem}
+/* поручения */
+.given{margin-bottom:1rem}
+.gv{margin-top:.4rem}.gv+.gv{margin-top:.9rem;padding-top:.7rem;border-top:1px solid var(--line)}
+.gvh{display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem}.gvh small{color:var(--mute)}
+.gvs{width:1.3rem;height:1.3rem;border-radius:50%;border:1.6px solid var(--line2);display:grid;place-items:center;flex:none}
+.gvs .ic{width:.8rem;height:.8rem;stroke-width:2.6}
+.gvr.dn .gvs{background:var(--ok);border-color:var(--ok);color:#0e2a1d}
+.gvr.dn .tx b{color:var(--mute);text-decoration:line-through}
+.al.share{border-left-color:var(--ok)}.al.share .ah{color:var(--ok)}

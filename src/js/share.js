@@ -37,7 +37,7 @@ async function sOpen(k, o) { return JSON.parse(sDec.decode(await crypto.subtle.d
 
 // ---------- записи: что уходит другим участникам ----------
 // колонки и теги у каждого свои, поэтому передаются названиями; папка проекта — личная
-const T_KEYS = ['title', 'desc', 'order', 'prio', 'project', 'parent', 'postponed', 'date', 'time', 'dur', 'remind', 'repeat', 'checklist', 'created', 'doneAt', 'archived', 'who', 'laws'];
+const T_KEYS = ['title', 'desc', 'order', 'prio', 'project', 'parent', 'postponed', 'date', 'time', 'dur', 'remind', 'repeat', 'checklist', 'created', 'doneAt', 'archived', 'who', 'asg', 'laws'];
 const P_KEYS = ['title', 'color', 'desc', 'status', 'start', 'deadline', 'budget', 'created'];
 function recOfTask(t) { const r = { k: 't', id: t.id }; T_KEYS.forEach(k => r[k] = t[k] === undefined ? null : t[k]); const c = colOf(t.col); r.colName = c ? c.title : ''; r.done = isDone(t); r.tagNames = (t.tags || []).map(id => tagOf(id)).filter(Boolean).map(x => x.title).sort(); return r; }
 function recOfProj(p) { const r = { k: 'p', id: p.id }; P_KEYS.forEach(k => r[k] = p[k] === undefined ? null : p[k]); return r; }
@@ -98,7 +98,7 @@ async function syncNow(force) {
       (x.records || []).forEach(r => offer(r.id, { rec: r, upd: r.upd || 0, by: r.by }));
       Object.entries(x.tombs || {}).forEach(([id, ts]) => offer(id, { tomb: true, upd: ts }));
     }
-    let changed = false;
+    let changed = false; const events = [], me = S.me.id;
     UI.syncing = true;
     const order = Object.keys(best).sort((a, b) => (best[a].rec && best[a].rec.k === 'p' ? 0 : 1) - (best[b].rec && best[b].rec.k === 'p' ? 0 : 1));
     for (const id of order) {
@@ -119,7 +119,11 @@ async function syncNow(force) {
         const bs = (S.base[id] && typeof S.base[id] === 'object') ? S.base[id] : {}; next = {};
         new Set([...Object.keys(body), ...Object.keys(loc[id])]).forEach(k => { next[k] = J(loc[id][k]) !== J(bs[k]) ? loc[id][k] : body[k]; });
       }
-      if (!loc[id] || J(loc[id]) !== J(next)) { applyRec(next); changed = true; }
+      if (!loc[id] || J(loc[id]) !== J(next)) {
+        const old = next.k === 't' ? byId(id) : null, oldWho = old ? old.who : null, oldDone = old ? isDone(old) : false;
+        applyRec(next); changed = true;
+        if (next.k === 't') { const t = byId(id); if (t && t.who === me && oldWho !== me && !isDone(t)) events.push({ k: 'asg', t, by }); if (t && t.asg === me && t.who && t.who !== me && isDone(t) && old && !oldDone) events.push({ k: 'done', t }); }
+      }
       S.meta[id] = { upd, by }; delete S.tombs[id];
     }
     for (const id of changedLocal) S.meta[id] = { upd: now, by: S.me.id };
@@ -132,6 +136,7 @@ async function syncNow(force) {
     await FX.mkdir(MDIR);
     await FX.write(MDIR + '/' + S.me.id + '.json', JSON.stringify(file));
     S.base = cur;
+    if (events.length) shareNotify(events, !S.last);
     S.last = now; SHS.dirty = false; SHS.lastSig = sig; if (!SHS.err || !/пароль/.test(SHS.err)) SHS.err = null;
     UI.syncing = false;
     save();
@@ -151,6 +156,33 @@ function shareStart() {
   if (window.api.files.setRoot) window.api.files.setRoot(SH().folder);
   SHS.timer = setInterval(() => { if (!document.hidden) syncNow(); }, IS_PHONE ? 30000 : 20000);
   setTimeout(() => syncNow(true), 1500);
+}
+
+// ---------- уведомления: вам назначили задачу / ваше поручение выполнено ----------
+function shareNotify(events, first) {
+  const name = id => (memberOf(id) || {}).name || 'Участник';
+  const asg = events.filter(e => e.k === 'asg'), done = events.filter(e => e.k === 'done');
+  const send = (title, body, task) => { shareAlert(title, body, task); if (hasApi && window.api.notify) window.api.notify({ title, body, task }); };
+  if (asg.length > 3 || (first && asg.length > 1)) send('Вам назначено задач: ' + asg.length, asg.slice(0, 4).map(e => '• ' + e.t.title).join('\n'), null);
+  else asg.forEach(e => send('Вам назначена задача', `${e.t.title}${e.t.date ? ' · ' + dueTxt(e.t) : ''}${projOf(e.t.project) ? ' · ' + projOf(e.t.project).title : ''}${e.by && e.by !== SH().me.id ? '\nНазначил(а): ' + name(e.by) : ''}`, e.t.id));
+  if (done.length > 3) send('Выполнено поручений: ' + done.length, done.slice(0, 4).map(e => '• ' + e.t.title + ' — ' + name(e.t.who)).join('\n'), null);
+  else done.forEach(e => send('Поручение выполнено', `${name(e.t.who)}: ${e.t.title}`, e.t.id));
+  if (D.settings.sound !== false) beep();
+}
+function shareAlert(title, body, task) {
+  const el = document.createElement('div'); el.className = 'al share';
+  el.innerHTML = `<div class="ah">${ic('users')} ${esc(title)}<button class="ib sm" data-act="alClose" aria-label="Закрыть">${ic('x')}</button></div><p style="white-space:pre-line">${esc(body)}</p><div class="ab">${task ? `<button class="btn sm pri" data-act="alOpen" data-id="${task}">Открыть</button>` : `<button class="btn sm pri" data-act="shGiven" data-v="mine">Мои задачи</button>`}</div>`;
+  $('#alerts').appendChild(el);
+}
+// карточка «Поручено мной» на обзоре: что раздали и кто что выполнил
+function givenHtml() {
+  if (!shareOn()) return '';
+  const me = SH().me.id, G = live().filter(t => t.asg === me && t.who && t.who !== me && (!isDone(t) || (t.doneAt && Date.now() - t.doneAt < 14 * 864e5)));
+  if (!G.length) return '';
+  const by = new Map(); G.forEach(t => { if (!by.has(t.who)) by.set(t.who, []); by.get(t.who).push(t); });
+  return `<section class="pan given"><div class="ph2"><h2>${ic('users')} Поручено мной</h2><small>${G.filter(t => !isDone(t)).length} в работе · ${G.filter(isDone).length} выполнено за 2 недели</small><span class="spacer"></span><button class="btn sm ghost" data-act="shGiven" data-v="given">На доске</button></div>
+    ${[...by].map(([w, L]) => `<div class="gv"><div class="gvh">${whoChip(w)}<b>${esc((memberOf(w) || {}).name || 'Участник')}</b><small>${L.filter(t => !isDone(t)).length} в работе · ${L.filter(isDone).length} выполнено</small></div>
+      ${L.sort((a, b) => (isDone(a) ? 1 : 0) - (isDone(b) ? 1 : 0) || (a.date || '9').localeCompare(b.date || '9')).map(t => `<div class="lrow gvr ${isDone(t) ? 'dn' : ''}" data-act="openTask" data-id="${t.id}"><span class="gvs">${isDone(t) ? ic('check') : ''}</span><div class="tx"><b>${esc(t.title)}</b><small>${isDone(t) ? 'выполнено' + (t.doneAt ? ' ' + fmtTs(t.doneAt) : '') : (t.date ? (t.date < today() ? 'просрочено · ' : '') + dueTxt(t) : 'без срока')} · ${esc((colOf(t.col) || {}).title || '')}</small></div></div>`).join('')}</div>`).join('')}</section>`;
 }
 
 // ---------- подключение к пространству ----------
@@ -212,6 +244,7 @@ async function shareTab() {
     <div class="sline"><div class="tx"><b>Общая папка</b><div class="path">${esc(S.folder)}</div></div></div>
     <div class="sline"><div class="tx"><b>Участники</b><span>Появляются после первого обмена на их устройстве</span><div class="mems">${mem.map(m => `<span class="mem">${whoChip(m.id)}${esc(m.name)}${m.id === S.me.id ? ' <small>— вы</small>' : m.at ? ` <small>${ago(m.at)}</small>` : ''}</span>`).join('')}</div></div></div>
     <div class="sline"><div class="tx"><b>Общие проекты</b><span>${shp.length ? shp.map(p => esc(p.title)).join(', ') : 'Пока нет. Откройте проект → «Изменить» → включите «Общий проект»'}</span></div></div>
+    <div class="sline"><div class="tx"><b>Напоминания по общим задачам — только исполнителю</b><span>Задача с исполнителем напоминает только ему. Без исполнителя — всем участникам</span></div><input type="checkbox" class="tog" id="sh-remmine" ${S.remMine !== false ? 'checked' : ''}></div>
     <div class="sline"><div class="tx"><b>Моё имя</b></div><div class="ctl"><input class="in" id="sh-rename" value="${esc(S.me.name)}" maxlength="30" style="width:12rem"></div></div>
     <div class="sline"><div class="tx"><b>Отключиться</b><span>Общие проекты останутся у вас как личные копии и перестанут обновляться</span></div><button class="btn danger" data-act="shOff">Отключить</button></div>`;
 }
@@ -219,10 +252,11 @@ Object.assign(ACT, {
   shPick: async () => { const p = await window.api.files.pick(); if (p) { UI.shFolder = p; $('#sh-path').textContent = p; } },
   shAccess: async () => { await window.api.files.askAccess(); toast('Включите «Разрешить доступ ко всем файлам» и вернитесь в Планер'); const t = setInterval(async () => { if (await window.api.files.hasAccess()) { clearInterval(t); if (UI.settab === 'share') drawSettings(); } }, 1500); setTimeout(() => clearInterval(t), 120000); },
   shConnect: () => shareConnect(),
+  shGiven: b => { b.closest && b.closest('.al') && b.closest('.al').remove(); TF.filter = b.dataset.v; go('board'); },
   shSync: async () => { const ok = await syncNow(true); toast(ok ? 'Синхронизировано' : 'Не получилось — см. сообщение в настройках'); },
   shOff: () => { if (!shareOn()) return; clearInterval(SHS.timer); D.projects.forEach(p => { delete p.shared; }); const me = D.share.me; D.share = { me: { ...me } }; save(); drawSettings(); render(); toast('Совместная работа отключена'); }
 });
-document.addEventListener('change', e => { if (e.target.id === 'sh-rename' && shareOn()) { const v = e.target.value.trim(); if (v) { D.share.me.name = v; shareDirty(); save(); toast('Имя изменено'); } } }, true);
+document.addEventListener('change', e => { if (e.target.id === 'sh-remmine' && shareOn()) { D.share.remMine = e.target.checked; save(); return; } if (e.target.id === 'sh-rename' && shareOn()) { const v = e.target.value.trim(); if (v) { D.share.me.name = v; shareDirty(); save(); toast('Имя изменено'); } } }, true);
 // проект стал личным — забываем его записи, чтобы у других он не удалился
 function unshareProject(p) {
   const S = SH(); if (!S || !S.base) return;
