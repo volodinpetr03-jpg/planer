@@ -21,7 +21,7 @@ const lawDB = (() => {
   let dbp = null;
   const open = () => dbp || (dbp = new Promise((res, rej) => { const r = indexedDB.open('planer-law', 1); r.onupgradeneeded = () => r.result.createObjectStore('docs', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }));
   const tx = (mode, fn) => open().then(db => new Promise((res, rej) => { const t = db.transaction('docs', mode), s = t.objectStore('docs'); const r = fn(s); t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }));
-  return { put: o => tx('readwrite', s => s.put(o)), del: id => tx('readwrite', s => s.delete(id)), all: () => tx('readonly', s => s.getAll()) };
+  return { put: o => tx('readwrite', s => s.put(o)), del: id => tx('readwrite', s => s.delete(id)), all: () => tx('readonly', s => s.getAll()), get: id => tx('readonly', s => s.get(id)) };
 })();
 function lawLoad() {
   if (!lawReady) lawReady = lawDB.all().then(L => { (L || []).forEach(d => LAWC.set(d.id, d.arts || [])); }).catch(e => { console.warn(e); });
@@ -30,8 +30,11 @@ function lawLoad() {
 const lawDoc = id => LW().docs.find(d => d.id === id);
 const lawArts = id => LAWC.get(id) || [];
 const lawArt = (doc, art) => lawArts(doc).find(a => a.id === art);
+const unitsN = arts => arts.filter(a => !a.k).length;
 const unitOf = d => d && d.unit === 'п' ? 'п.' : 'ст.';
-const artLabel = (d, a) => `${unitOf(d)} ${a.n} ${d.short || d.title}`;
+const subLab = a => /^\d/.test(a.sub) ? a.sub + ')' : '«' + a.sub + '»';
+const artLabel = (d, a) => a.k === 'x' ? `${d.short || d.title}${a.ch ? ' · ' + a.ch.split(' › ').pop() : ''}` : a.k === 's' ? `пп. ${subLab(a)} п. ${a.n.replace(/[«(].*$/, '')} ${d.short || d.title}` : `${unitOf(d)} ${a.n} ${d.short || d.title}`;
+const artHead = (d, a) => a.k === 'x' ? (a.ch ? a.ch.split(' › ').pop() : 'Текст документа') : a.k === 's' ? `Подпункт ${subLab(a)} пункта ${a.n.replace(/[«(].*$/, '')}` : `${d.unit === 'п' ? 'Пункт' : 'Статья'} ${a.n}${a.t && d.unit !== 'п' ? '. ' + a.t : ''}`;
 
 // ---------- разбор текста документа ----------
 const SHORTS = [[/об административных правонарушениях/i, 'КоАП РФ'], [/уголовно-процессуальный/i, 'УПК РФ'], [/гражданский процессуальный/i, 'ГПК РФ'], [/арбитражный процессуальный/i, 'АПК РФ'], [/административного судопроизводства/i, 'КАС РФ'], [/уголовно-исполнительный/i, 'УИК РФ'], [/градостроительный кодекс/i, 'ГрК РФ'], [/гражданский кодекс/i, 'ГК РФ'], [/трудовой кодекс/i, 'ТК РФ'], [/уголовный кодекс/i, 'УК РФ'], [/налоговый кодекс/i, 'НК РФ'], [/жилищный кодекс/i, 'ЖК РФ'], [/земельный кодекс/i, 'ЗК РФ'], [/семейный кодекс/i, 'СК РФ'], [/бюджетный кодекс/i, 'БК РФ'], [/лесной кодекс/i, 'ЛК РФ'], [/водный кодекс/i, 'ВК РФ'], [/воздушный кодекс/i, 'ВзК РФ'], [/конституция российской федерации/i, 'Конституция РФ']];
@@ -63,11 +66,12 @@ function lawMeta(lines) {
   if (!short) { const pn = head.match(/(Постановлени[ея]|Приказ|Указ|Распоряжени[ея])[\s\S]{0,140}?[N№]\s*([\dА-Яа-яA-Za-z/\-]+)/i); if (pn) { const k = pn[1].toLowerCase(); short = (k.startsWith('пост') ? 'Пост.' : k.startsWith('расп') ? 'Расп.' : k.startsWith('приказ') ? 'Приказ' : 'Указ') + ' N ' + pn[2]; } }
   return { title: title.replace(/\s+/g, ' ').replace(/российской федерации/gi, 'Российской Федерации').trim(), short, rev };
 }
-function lawParse(text) {
+function lawParse(text) { const p = lawParse0(text); p.raw = String(text || ''); return p; }
+function lawParse0(text) {
   const lines = lawNorm(text).split('\n');
   const meta = lawMeta(lines);
-  const arts = []; let cur = null, ch = '', chs = [];
-  const push = () => { if (cur) { cur.body = cur.body.join('\n').trim(); arts.push(cur); } cur = null; };
+  const arts = []; let cur = null, ch = '', chs = [], frag = null;
+  const push = () => { if (cur) { cur.body = cur.body.join('\n').trim(); arts.push(cur); } cur = null; frag = null; };
   const hasArts = lines.some(l => RX_ART.test(l));
   if (hasArts) {
     for (const l of lines) {
@@ -75,25 +79,90 @@ function lawParse(text) {
       if (m) { push(); cur = { id: 'a' + arts.length, n: m[1], t: m[2].trim(), ch, body: [] }; continue; }
       if (isHead(c, l)) { push(); const lvl = chLevel(c[1]); chs = chs.slice(0, lvl); chs[lvl] = chTitle(c); ch = chs.filter(Boolean).join(' › '); continue; }
       if (cur) { if (!l && !cur.body.length) continue; if (!cur.t && !cur.body.length && l.length < 200 && !/^\d/.test(l)) cur.t = l; else cur.body.push(l); }
+      else if (l || frag) { if (!frag || frag.ch !== ch) { frag = { id: 'x', k: 'x', n: '', t: '', ch, body: [] }; arts.push(frag); } frag.body.push(l); }
     }
     push();
-    return { ...meta, unit: 'ст', arts };
+    const out = arts.map(a => a.k === 'x' ? { ...a, body: (Array.isArray(a.body) ? a.body.join('\n') : a.body).trim() } : a).filter(a => a.k !== 'x' || a.body);
+    out.forEach((a, i) => { a.id = 'a' + i; if (a.k === 'x') a.t = a.body.split('\n')[0].slice(0, 140); });
+    return { ...meta, unit: 'ст', v: 2, arts: out };
   }
-  // нет статей — правила, положения, приказы: делим по пунктам «1.», «2.», …; разделы «I. …» — как главы
-  let fresh = true; // после заголовка раздела нумерация может начаться заново
-  for (const l of lines) {
-    const s = l.length < 220 && l.match(RX_SECT), c = !s && l.match(RX_CH), p = l.match(RX_PT);
-    if (s || isHead(c, l)) { push(); ch = s ? `${s[1]}. ${s[2]}` : chTitle(c); fresh = true; continue; }
-    if (/^(УТВЕРЖДЕН|ПРАВИЛА|ПОЛОЖЕНИЕ|ПОРЯДОК|ТРЕБОВАНИЯ|ПЕРЕЧЕНЬ|РЕГЛАМЕНТ)/.test(l) && l === l.toUpperCase()) { push(); fresh = true; continue; }
-    if (p && (!cur || isNextPoint(cur.n, p[1]) || (fresh && parseFloat(p[1]) === 1))) {
-      if (fresh && parseFloat(p[1]) === 1 && (cur || arts.length)) { push(); arts.forEach(a => { if (!/^вв/.test(a.n)) { a.n = 'вв.' + a.n; a.ch = a.ch || 'Вводная часть'; } }); } // пункты самого постановления до утверждённых правил
-      push(); cur = { id: 'a' + arts.length, n: p[1], t: '', ch, body: [p[2]] }; fresh = false; continue;
+  return lawParsePts(lines, meta);
+}
+// ---------- постановления, приказы, правила: Постановление › пункты › подпункты; Утверждено… › разделы › пункты; приложения ----------
+const LETTERS = 'абвгдежзиклмнопрстуфхцчшщэюя';
+const RX_SUBL = /^([а-яё])\)\s+(\S.*)$/;
+const RX_SUBN = /^(\d{1,2})\)\s+(\S.*)$/;
+const RX_APPR = /^УТВЕРЖДЕН[АЫО]?(?![А-ЯЁа-яё])/;
+const RX_APPX = /^приложение(?:\s*(?:[N№]\s*)?(\d+(?:\(\d+\))?(?:\.\d+)?))?\.?\s*$/i;
+const ROM = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+const romanVal = r => { let v = 0; for (let i = 0; i < r.length; i++) { const a = ROM[r[i]], b = ROM[r[i + 1]] || 0; v += a < b ? -a : a; } return v; };
+const isCaps = l => l.length > 2 && l === l.toUpperCase() && /[А-ЯЁ]{3}/.test(l);
+const sentCase = s => isCaps(s) ? s.charAt(0) + s.slice(1).toLowerCase().replace(/российской федерации/g, 'Российской Федерации').replace(/\bрф\b/g, 'РФ') : s;
+const shortName = s => { s = s.replace(/\s+/g, ' ').trim(); return s.length > 140 ? s.slice(0, 137).replace(/\s+\S*$/, '') + '…' : s; };
+function lawParsePts(lines, meta) {
+  const head = lines.slice(0, 20).join('\n'), km = head.match(/^(ПОСТАНОВЛЕНИЕ|ПРИКАЗ|УКАЗ|РАСПОРЯЖЕНИЕ|РЕШЕНИЕ)(?![А-ЯЁа-яё])/m);
+  const arts = [];
+  let part = km ? km[1].charAt(0) + km[1].slice(1).toLowerCase() : '', sect = '', mode = '', hdrTitle = [], partBase = '';
+  let pt = null, cur = null, frag = null, lastRom = 0, nextSub = null, stampArt = null;
+  const path = () => [part, sect].filter(Boolean).join(' › ');
+  const close = () => { cur = null; pt = null; frag = null; nextSub = null; };
+  const add = a => { a.id = 'a' + arts.length; a.ch = path(); a.body = a.body || []; arts.push(a); return a; };
+  const text = l => { if (cur) { cur.body.push(l); return; } if (!l) { if (frag) frag.body.push(''); return; } if (!frag) frag = add({ k: 'x', n: '', t: '', body: [] }); frag.body.push(l); };
+  const newPart = name => { close(); part = name; sect = ''; lastRom = 0; };
+  for (let ii = 0; ii < lines.length; ii++) {
+    let l = lines[ii];
+    // шапка утверждённого документа или приложения: «постановлением… от… №…», затем заголовок прописными
+    if (mode === 'stamp') {
+      if (!l) { if (frag && frag.body.length) frag.body.push(''); continue; }
+      if (isCaps(l) && !/^(РОССИЙСКОЙ|ПРАВИТЕЛЬСТВА)/.test(l)) { mode = 'title'; hdrTitle = [l]; continue; }
+      if (RX_SECT.test(l) || RX_PT.test(l) || l.length > 160) { mode = ''; }
+      else { text(l); continue; }
     }
-    if (cur) cur.body.push(l);
+    if (mode === 'title') {
+      if (l && hdrTitle.length < 4 && l.length < 260 && !RX_SECT.test(l) && !RX_PT.test(l) && !RX_SUBL.test(l) && (isCaps(l) || /^[а-яё("«]/.test(l))) { hdrTitle.push(l); continue; }
+      const t = sentCase(hdrTitle.join(' ').replace(/\s+/g, ' '));
+      part = partBase ? partBase + '. ' + shortName(t) : shortName(t); sect = ''; mode = ''; frag = null;
+      if (stampArt) stampArt.ch = path();
+      if (!l) continue;
+    }
+    if (!l) { text(''); continue; }
+    // «УТВЕРЖДЕНА / УТВЕРЖДЕНЫ …» — начинается утверждённый документ
+    if (RX_APPR.test(l) && l.length < 60) { newPart('Утверждённый документ'); partBase = ''; mode = 'stamp'; frag = stampArt = add({ k: 'x', st: 1, n: '', t: '', body: [l] }); continue; }
+    // «Приложение № 1» (+ «к Программе …»)
+    const ap = l.length < 200 && l.match(RX_APPX);
+    if (ap) { const nm = 'Приложение' + (ap[1] ? ' № ' + ap[1] : ''); newPart(nm); partBase = nm; mode = 'stamp'; frag = stampArt = add({ k: 'x', st: 1, n: '', t: '', body: [l] }); continue; }
+    // «I. Общие положения» — раздел (номера идут по порядку); «I.» и название на разных строках тоже понимаем
+    let sm = l.length < 240 && l.match(RX_SECT);
+    if (!sm && /^[IVXLCDM]+\.$/.test(l) && lines[ii + 1] && lines[ii + 1].length < 240) { sm = [l, l.slice(0, -1), lines[ii + 1]]; ii++; }
+    if (sm) { const v = romanVal(sm[1]); if (v === lastRom + 1 || (v === 1 && lastRom > 0)) { close(); lastRom = v; sect = sm[1] + '. ' + sentCase(sm[2].replace(/[.:]$/, '')); continue; } }
+    const c = l.match(RX_CH);
+    if (c && isHead(c, l)) { close(); sect = chTitle(c); continue; }
+    // пункт «12.», «16(1).»
+    const p = l.match(RX_PT);
+    if (p && (!pt || isNextPoint(pt.n, p[1]) || (parseFloat(p[1]) === 1 && !arts.some(a => !a.k && a.ch === path())))) {
+      close(); pt = cur = add({ n: p[1], t: '', body: [p[2]] }); continue;
+    }
+    // подпункт «а)» или «1)» внутри пункта
+    if (pt) {
+      const sl = l.match(RX_SUBL), sn = !sl && l.match(RX_SUBN);
+      const want = nextSub || { a: 'а', n: '1' };
+      if ((sl && sl[1] === want.a) || (sn && sn[1] === want.n)) {
+        const key = sl ? sl[1] : sn[1];
+        cur = add({ k: 's', par: pt.id, n: pt.n + (sl ? '«' + key + '»' : '(' + key + ')'), sub: key, t: '', body: [l] });
+        cur.ch = pt.ch;
+        nextSub = sl ? { a: LETTERS[LETTERS.indexOf(key) + 1] || '-', n: '-' } : { a: '-', n: String(+key + 1) };
+        continue;
+      }
+    }
+    text(l);
   }
-  push();
-  arts.forEach(a => { a.t = a.body.split('\n')[0].slice(0, 140); });
-  return { ...meta, unit: 'п', arts };
+  // убираем пустые хвосты, подписываем
+  const out = arts.map(a => ({ ...a, body: a.body.join('\n').replace(/\n{3,}/g, '\n\n').trim() })).filter(a => a.body || a.k !== 'x');
+  out.forEach((a, i) => { a.id = 'a' + i; });
+  out.forEach(a => { a.t = (a.k === 's' ? a.body.replace(/^\S+\)\s*/, '') : a.body).split('\n')[0].slice(0, 140); });
+  // родитель подпункта — по номеру пункта в том же месте документа
+  out.forEach((a, i) => { if (a.k === 's') { for (let j = i - 1; j >= 0; j--) if (!out[j].k && out[j].ch === a.ch) { a.par = out[j].id; break; } } });
+  return { ...meta, unit: 'п', v: 2, arts: out };
 }
 // следующий пункт: номер больше прежнего (не «1.» внутри текста пункта 25)
 const ptKey = n => { const m = String(n).match(/^(\d+(?:\.\d+)?)(?:\((\d+)\))?/); return m ? parseFloat(m[1]) + (m[2] ? +m[2] / 1000 : 0) : 0; };
@@ -224,7 +293,7 @@ function artHtml(d, a, opts = {}) {
   const L = lawArts(d.id), i = L.indexOf(a);
   return `<article class="lart">
     <div class="lcrumb"><button class="lnk" data-act="lawCrumb" data-doc="${d.id}" data-k="">${esc(d.short || d.title)}</button>${a.ch ? a.ch.split(' › ').map((t, i, arr) => ` › <button class="lnk" data-act="lawCrumb" data-doc="${d.id}" data-k="${esc(arr.slice(0, i + 1).join(' › '))}">${esc(t)}</button>`).join('') : ''}</div>
-    <h2>${d.unit === 'п' ? 'Пункт' : 'Статья'} ${esc(a.n)}${a.t && d.unit !== 'п' ? '. ' + esc(a.t) : ''}</h2>
+    <h2>${esc(artHead(d, a))}</h2>
     <div class="lbtns"><button class="btn sm ${mk ? 'pri' : ''}" data-act="lawMark" data-doc="${d.id}" data-art="${a.id}">${ic('bookmark')} ${mk ? 'В закладках' : 'В закладки'}</button><button class="btn sm" data-act="lawTask" data-doc="${d.id}" data-art="${a.id}">${ic('link')} К задаче</button><button class="btn sm ghost" data-act="lawCopy" data-doc="${d.id}" data-art="${a.id}">${ic('copy')} Копировать</button><button class="btn sm ghost" data-act="lawCheck" data-doc="${d.id}">${ic('ext')} Актуальная редакция</button></div>
     ${mk ? `<div class="lmk"><label class="f"><span>Заметка к статье</span><textarea class="in" data-lnote="${mk.id}" rows="2" placeholder="Своими словами: когда применять, на что обратить внимание">${esc(mk.note || '')}</textarea></label></div>` : ''}
     ${ts.length ? `<div class="ltasks"><span>${ic('list')} Задачи:</span>${ts.map(t => `<button class="chip" data-act="openTask" data-id="${t.id}">${esc(t.title)}</button>`).join('')}</div>` : ''}
@@ -332,7 +401,7 @@ function lawPreview(p) {
     <label class="f"><span>Название</span><input class="in" id="lp-title" value="${esc(p.title)}" placeholder="Полное название документа"></label>
     <div class="row two"><label class="f"><span>Коротко</span><input class="in" id="lp-short" value="${esc(p.short)}" placeholder="КоАП РФ, 69-ФЗ…"></label><label class="f"><span>Редакция от</span><input class="in" type="date" id="lp-rev" value="${p.rev}"></label></div>
     <label class="f"><span>Ссылка на документ на официальном портале <em>— необязательно</em></span><input class="in" id="lp-url" placeholder="http://pravo.gov.ru/…" value="${esc(UI.form.srcUrl || (UI.form.replace ? (lawDoc(UI.form.replace).url || '') : ''))}"></label>
-    <p class="hint"><b>Распознано:</b> ${p.arts.length} ${p.unit === 'п' ? plural(p.arts.length, ['пункт', 'пункта', 'пунктов']) : plural(p.arts.length, ['статья', 'статьи', 'статей'])}${ch ? `, ${ch} ${plural(ch, ['глава', 'главы', 'глав'])}` : ''}. Первые: ${p.arts.slice(0, 4).map(a => (p.unit === 'п' ? 'п. ' : 'ст. ') + esc(a.n)).join(', ')}${p.arts.length > 4 ? ' … последняя ' + (p.unit === 'п' ? 'п. ' : 'ст. ') + esc(p.arts[p.arts.length - 1].n) : ''}.</p></div>`
+    <p class="hint"><b>Распознано:</b> ${unitsN(p.arts)} ${p.unit === 'п' ? plural(unitsN(p.arts), ['пункт', 'пункта', 'пунктов']) : plural(unitsN(p.arts), ['статья', 'статьи', 'статей'])}${p.arts.some(a => a.k === 's') ? `, ${p.arts.filter(a => a.k === 's').length} подпунктов` : ''}${ch ? `, ${ch} ${p.unit === 'п' ? plural(ch, ['раздел', 'раздела', 'разделов']) : plural(ch, ['глава', 'главы', 'глав'])}` : ''}. Первые: ${p.arts.filter(a => !a.k).slice(0, 4).map(a => (p.unit === 'п' ? 'п. ' : 'ст. ') + esc(a.n)).join(', ')}${p.arts.length > 4 ? ' … последняя ' + (p.unit === 'п' ? 'п. ' : 'ст. ') + esc(p.arts[p.arts.length - 1].n) : ''}.</p></div>`
     : '<p class="hint warn">Не нашёл в тексте ни статей («Статья 1.»), ни пунктов («1.»). Проверьте, что вставлен текст самого документа.</p>';
   const go = $('[data-act=lawParseGo]'); if (go && p.arts.length) { go.textContent = 'Сохранить в библиотеку'; go.dataset.act = 'lawSave'; }
 }
@@ -346,12 +415,12 @@ async function lawSaveParsed() {
     try { await lawApplyReplace(d, p, { title, short, rev, url }); } catch (e) { return toast('Не удалось сохранить текст: ' + ((e && e.message) || e)); }
     save(); closeModal(); LF.doc = d.id; LF.art = null; LF.q = ''; go('law'); return toast('Текст документа обновлён');
   } else {
-    d = { id: uid(), title, short, rev, url, unit: p.unit, n: p.arts.length, added: Date.now(), checked: Date.now() };
+    d = { id: uid(), title, short, rev, url, unit: p.unit, v: p.v || 1, n: unitsN(p.arts), added: Date.now(), checked: Date.now() };
     LW().docs.push(d);
   }
-  try { await lawDB.put({ id: d.id, arts: p.arts }); } catch (e) { return toast('Не удалось сохранить текст: ' + ((e && e.message) || e)); }
+  try { await lawDB.put({ id: d.id, arts: p.arts, raw: F.fullText || ($('#ltext') ? $('#ltext').value : '') }); } catch (e) { return toast('Не удалось сохранить текст: ' + ((e && e.message) || e)); }
   LAWC.set(d.id, p.arts); save(); closeModal(); LF.doc = d.id; LF.art = null; LF.q = ''; LF.tab = 'docs'; go('law');
-  toast(F.replace ? 'Текст документа обновлён' : `«${short || title}» добавлен: ${p.arts.length} ${p.unit === 'п' ? 'пунктов' : 'статей'}`);
+  toast(F.replace ? 'Текст документа обновлён' : `«${short || title}» добавлен: ${unitsN(p.arts)} ${p.unit === 'п' ? plural(unitsN(p.arts), ['пункт', 'пункта', 'пунктов']) : plural(unitsN(p.arts), ['статья', 'статьи', 'статей'])}`);
 }
 function lawEditForm(id) {
   const d = lawDoc(id); UI.form = { kind: 'lawedit', id };
@@ -419,7 +488,7 @@ Object.assign(ACT, {
   lawReplace: b => lawAddForm(b.dataset.doc),
   lawDel: b => { const d = lawDoc(b.dataset.doc); if (!d) return; snapU(); LW().docs = LW().docs.filter(x => x.id !== d.id); LW().marks = LW().marks.filter(m => m.doc !== d.id); lawDB.del(d.id).catch(() => {}); LAWC.delete(d.id); LF.doc = null; LF.art = null; save(); closeModal(); render(); toast(`«${d.short || d.title}» удалён из библиотеки`); },
   lawMark: b => { const ex = markOf(b.dataset.doc, b.dataset.art); if (ex) LW().marks = LW().marks.filter(m => m !== ex); else LW().marks.push({ id: uid(), doc: b.dataset.doc, art: b.dataset.art, note: '', at: Date.now() }); save(); if (sheetOpen()) lawSheet(b.dataset.doc, b.dataset.art); else render(); },
-  lawCopy: b => { const d = lawDoc(b.dataset.doc), a = lawArt(b.dataset.doc, b.dataset.art); const txt = `${d.unit === 'п' ? 'Пункт' : 'Статья'} ${a.n}${a.t && d.unit !== 'п' ? '. ' + a.t : ''}\n${a.body}\n\n(${d.short ? d.short + ', ' : ''}${d.title}${d.rev ? ', ред. от ' + d.rev.split('-').reverse().join('.') : ''})`; navigator.clipboard.writeText(txt).then(() => toast('Текст статьи скопирован')).catch(() => toast('Не удалось скопировать')); },
+  lawCopy: b => { const d = lawDoc(b.dataset.doc), a = lawArt(b.dataset.doc, b.dataset.art); const txt = `${artHead(d, a)}\n${a.body}\n\n(${d.short ? d.short + ', ' : ''}${d.title}${d.rev ? ', ред. от ' + d.rev.split('-').reverse().join('.') : ''})`; navigator.clipboard.writeText(txt).then(() => toast('Текст статьи скопирован')).catch(() => toast('Не удалось скопировать')); },
   lawCheck: b => {
     const d = lawDoc(b.dataset.doc); if (!d) return;
     d.checked = Date.now(); save();
@@ -559,13 +628,14 @@ function jsonDocHtml(txt) {
   if (!/<\w+[^>]*>/.test(best)) best = best.split('\n').map(l => `<p>${esc(l)}</p>`).join('');
   return `<html><head><title>${esc(title)}</title></head><body>${best}</body></html>`;
 }
-function lawApplyReplace(d, p, meta) {
-  const old = lawArts(d.id), byN = new Map(p.arts.map(a => [a.n, a])), remap = {};
-  old.forEach(a => { const nn = byN.get(a.n); if (nn) remap[a.id] = nn.id; });
+function lawApplyReplace(d, p, meta, raw) {
+  const old = lawArts(d.id), key = a => (a.ch || '') + '|' + a.n, byK = new Map(), byN = new Map(), remap = {};
+  p.arts.forEach(a => { if (a.k === 'x') return; if (!byK.has(key(a))) byK.set(key(a), a); if (!byN.has(a.n)) byN.set(a.n, a); });
+  old.forEach(a => { if (a.k === 'x') return; const nn = byK.get(key(a)) || byN.get(String(a.n).replace(/^вв\./, '')); if (nn) remap[a.id] = nn.id; });
   LW().marks = LW().marks.filter(m => m.doc !== d.id || remap[m.art]); LW().marks.forEach(m => { if (m.doc === d.id) m.art = remap[m.art]; });
   D.tasks.forEach(t => (t.laws || []).forEach(l => { if (l.doc === d.id && remap[l.art]) l.art = remap[l.art]; }));
-  Object.assign(d, meta || {}, { unit: p.unit, n: p.arts.length, checked: Date.now() });
-  LAWC.set(d.id, p.arts); return lawDB.put({ id: d.id, arts: p.arts });
+  Object.assign(d, meta || {}, { unit: p.unit, v: p.v || 1, n: unitsN(p.arts), checked: Date.now() });
+  LAWC.set(d.id, p.arts); return lawDB.put({ id: d.id, arts: p.arts, raw: raw || p.raw || '' });
 }
 const artsSig = arts => { const s = arts.map(a => a.n + a.t + a.body).join('|'); let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) + ':' + arts.length; };
 // проверка редакции: загружаем документ по сохранённой ссылке и сравниваем с библиотекой
