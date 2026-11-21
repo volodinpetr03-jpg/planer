@@ -8,5 +8,3 @@ mobile/android/app/src/main/assets/capacitor.config.json
 mobile/android/app/src/main/assets/capacitor.plugins.json
 dist/
 *.zip
-*.keystore
-*.jks
