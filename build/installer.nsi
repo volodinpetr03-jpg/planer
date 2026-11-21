@@ -6,7 +6,7 @@ Unicode true
 !define APPNAME "Планер"
 !define APPEXE "Planer.exe"
 !define APPID "local.d.planer"
-!define VERSION "3.20.1"
+!define VERSION "3.20.2"
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Planer"
 
 Name "${APPNAME}"

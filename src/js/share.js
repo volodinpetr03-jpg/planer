@@ -214,7 +214,7 @@ async function ydLoginStart() {
   const j = ydj(r);
   if (r.status !== 200 || !j.device_code) { YDL.manual = true; YDL.err = j.error === 'invalid_client' ? 'Яндекс не нашёл приложение с таким ClientID — проверьте его.' : 'Вход по коду не сработал (' + (j.error_description || j.error || ydErr(r)) + '). Получите токен на странице Яндекса — кнопка ниже.'; return drawSettings(); }
   YDL.code = { user: j.user_code, url: j.verification_url || 'https://ya.ru/device', dc: j.device_code, until: Date.now() + (j.expires_in || 300) * 1000, iv: Math.max(3, j.interval || 5) };
-  drawSettings(); openExternal(YDL.code.url); ydPoll();
+  drawSettings(); if (!IS_PHONE) openExternal(YDL.code.url); ydPoll();
 }
 function ydPoll() {
   clearTimeout(YDL.timer); const c = YDL.code; if (!c) return;
@@ -295,8 +295,8 @@ async function shareTab() {
         <li>Создайте приложение и скопируйте <b>ClientID</b> сюда.</li></ol>
         <label class="f"><span>ClientID</span><input class="in" id="yd-cid" value="${esc(D.settings.ydClient || '')}" placeholder="32 символа" autocomplete="off"></label></details>`}
       ${c ? `<div class="ydcode"><span>Откройте <b>${esc(c.url.replace(/^https?:\/\//, ''))}</b> и введите код:</span><b class="code">${esc(c.user)}</b>
-          <div class="fbtn"><button class="btn pri" data-act="shExt" data-v="${esc(c.url)}">${ic('ext')} Открыть страницу Яндекса</button><button class="btn" data-act="shCopy" data-v="${esc(c.user)}">${ic('copy')} Скопировать код</button><button class="btn ghost" data-act="ydCancel">Отмена</button></div>
-          <p class="hint">Жду подтверждения… Можно ввести код на любом устройстве — компьютере или телефоне.</p></div>`
+          <div class="fbtn"><button class="btn pri" data-act="ydGo" data-v="${esc(c.url)}" data-c="${esc(c.user)}">${ic('copy')} Скопировать код и открыть Яндекс</button><button class="btn ghost" data-act="ydCancel">Отмена</button></div>
+          <p class="hint">${IS_PHONE ? 'Код скопируется — на странице Яндекса вставьте его (долгое нажатие → «Вставить»), нажмите «Разрешить» и вернитесь в Планер.' : 'На странице Яндекса введите код и нажмите «Разрешить».'} Жду подтверждения… Код можно ввести и на другом устройстве — например, на компьютере.</p></div>`
         : `<div><button class="btn pri" data-act="ydLogin">${ic('users')} Войти через Яндекс</button></div>
           <p class="hint">Планер покажет короткий код — его нужно ввести на странице Яндекса и нажать «Разрешить». Вход сохраняется примерно на год.</p>`}
       <details class="shcid" ${YDL.manual ? 'open' : ''}><summary>Другой способ: вставить токен</summary>
@@ -342,6 +342,7 @@ Object.assign(ACT, {
   ydLogout: () => { const me = D.share && D.share.me; D.share = me ? { me } : null; YDL.folders = null; YDL.pick = ''; save(); drawSettings(); },
   ydReload: () => { YDL.folders = null; drawSettings(); },
   shExt: b => openExternal(b.dataset.v),
+  ydGo: async b => { try { await navigator.clipboard.writeText(b.dataset.c); toast('Код ' + b.dataset.c + ' скопирован'); } catch (e) { toast('Код: ' + b.dataset.c); } setTimeout(() => openExternal(b.dataset.v), IS_PHONE ? 600 : 0); },
   shCopy: b => { navigator.clipboard.writeText(b.dataset.v).then(() => toast('Код скопирован'), () => toast(b.dataset.v)); },
   shConnect: () => shareConnect(),
   shGiven: b => { b.closest && b.closest('.al') && b.closest('.al').remove(); TF.filter = b.dataset.v; go('board'); },
