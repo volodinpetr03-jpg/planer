@@ -15,7 +15,7 @@ const SPACE_FILE = 'planer-space.json', MDIR = 'members';
 const SHS = { busy: false, dirtyT: null, timer: null, lastSig: '', err: null, last: 0 };
 
 // ---------- файлы общей папки на Яндекс Диске ----------
-const YD_CLIENT = ''; // ClientID приложения «Планер» на oauth.yandex.ru (вшивается в сборку; пока нет — вводится в настройках)
+const YD_CLIENT = 'ee36a7c4544743438cf0aa387398a28e'; // ClientID приложения «Планер» на oauth.yandex.ru (вшивается в сборку; пока нет — вводится в настройках)
 const ydClient = () => YD_CLIENT || (D.settings.ydClient || '').trim();
 const ydj = r => { try { return JSON.parse((r && r.text) || '{}'); } catch (e) { return {}; } };
 function ydErr(r) {
