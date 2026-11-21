@@ -82,33 +82,75 @@ const SYN = [
 ];
 const cstem = w => w.length > 6 ? w.slice(0, w.length - 3) : w.length > 4 ? w.slice(0, w.length - 2) : w;
 const cwords = s => lnorm(s).split(/[^a-zа-я0-9]+/).filter(w => w.length > 2 && !STOP.has(w));
-function consultTerms(q, extra) {
-  const lq = ' ' + lnorm(q) + ' ', toks = cwords(q), stems = [...new Set(toks.map(cstem))], phrases = [];
-  SYN.forEach(([trig, legal]) => { if (trig.some(t => t.includes(' ') ? lq.includes(t) : toks.some(w => w.startsWith(t)) || lq.includes(' ' + t))) legal.forEach(p => phrases.push(p)); });
+function consultTerms(q, extra, opt) {
+  const I = lawIndex(), lq = ' ' + lnorm(q) + ' ', quoted = (String(q).match(/[«"“]([^»"”]{3,})[»"”]/) || [])[1];
+  const toks = cwords(quoted || q), phrases = [];
+  const groups = []; toks.forEach(w => { const st = RU.stem(w); if (!groups.some(g => g.s === st)) groups.push({ w, s: st, set: stemGroup(st) }); });
+  if (!(opt && opt.noSyn)) SYN.forEach(([trig, legal]) => { if (trig.some(t => t.includes(' ') ? lq.includes(t) : toks.some(w => w.startsWith(t)) || lq.includes(' ' + t))) legal.forEach(p => phrases.push(p)); });
   (extra || []).forEach(p => { p = String(p).trim().replace(/^[-•*\d.)\s]+/, '').replace(/[.«»"]/g, ''); if (p && p.length < 60) phrases.push(p.toLowerCase()); });
-  const uniq = [...new Set(phrases)];
-  return { stems, phrases: uniq, pstems: uniq.map(p => cwords(p).map(cstem)).filter(a => a.length) };
+  const uniq = [...new Set(phrases)], pgroups = uniq.map(p => cwords(p).map(w => stemGroup(RU.stem(w)))).filter(a => a.length && a.every(g => g.size));
+  const strong = new Set(); groups.forEach(g => { strong.add(g.s); g.set.forEach(x => strong.add(x)); });
+  const soft = new Set(); pgroups.forEach(pg => pg.forEach(g => g.forEach(x => { if (!strong.has(x)) soft.add(x); })));
+  void I; return { q, quoted: !!quoted, groups, phrases: uniq, pgroups, strong, soft };
 }
 const sentSplit = body => body.split(/\n+/).flatMap(p => p.split(/(?<=[.;:])\s+(?=[А-ЯЁ0-9«(])/)).map(s => s.trim()).filter(s => s.length > 3);
-function consultSearch(T, limit = 8) {
-  const out = [];
-  for (const d of LW().docs) for (const a of lawArts(d.id)) {
-    const tt = lnorm(a.t), bb = lnorm(a.body); let sc = 0, hit = 0;
-    for (const s of T.stems) { if (tt.includes(s)) { sc += 4; hit++; } else { const c = bb.split(s).length - 1; if (c) { sc += 1.5 + Math.min(c, 4) * 0.25; hit++; } } }
-    for (const ps of T.pstems) { if (ps.every(s => tt.includes(s))) sc += 5; else if (ps.every(s => bb.includes(s))) sc += 3; }
-    if (!sc) continue;
-    sc *= 0.5 + (T.stems.length ? hit / T.stems.length : 0.5);
-    out.push({ d, a, sc });
+// наименьшее окно слов, где встречаются все найденные слова вопроса
+function minWindow(lists) {
+  const ev = []; lists.forEach((l, k) => l.forEach(p => ev.push([p, k]))); ev.sort((a, b) => a[0] - b[0]);
+  const need = lists.length, cnt = new Map(); let have = 0, best = Infinity, lo = 0;
+  for (let hi = 0; hi < ev.length; hi++) {
+    const k = ev[hi][1]; cnt.set(k, (cnt.get(k) || 0) + 1); if (cnt.get(k) === 1) have++;
+    while (have === need) { best = Math.min(best, ev[hi][0] - ev[lo][0] + 1); const kl = ev[lo][1]; cnt.set(kl, cnt.get(kl) - 1); if (!cnt.get(kl)) have--; lo++; }
   }
-  out.sort((x, y) => y.sc - x.sc);
-  const top = out.slice(0, limit), max = top.length ? top[0].sc : 1;
+  return best;
+}
+// слова вопроса идут подряд и по порядку (в любой форме)
+function inOrder(seq, groups) {
+  if (groups.length < 2) return false;
+  for (let i = 0; i + groups.length <= seq.length; i++) { let ok = true; for (let k = 0; k < groups.length; k++) if (!groups[k].set.has(seq[i + k])) { ok = false; break; } if (ok) return true; }
+  return false;
+}
+function consultSearch(T, limit = 8) {
+  const I = lawIndex(), out = [], G = T.groups;
+  for (const X of I.arts.values()) {
+    let sc = 0, hit = 0; const hits = [];
+    for (const g of G) {
+      let inT = false, pos = [];
+      for (const st of g.set) { if (X.ts.has(st)) inT = true; const l = X.pos.get(st); if (l) pos = pos.concat(l); }
+      if (inT || pos.length) { hit++; if (inT) sc += 6; if (pos.length) { sc += 2 + Math.min(pos.length, 6) * 0.3; hits.push(pos); } }
+    }
+    for (const pg of T.pgroups) { if (pg.every(g => [...g].some(x => X.ts.has(x)))) sc += 5; else if (pg.every(g => [...g].some(x => X.pos.has(x)))) sc += 3; }
+    if (!sc) continue;
+    let exact = false;
+    if (G.length >= 2) {
+      if (inOrder(X.tsa, G)) { sc += 30; exact = true; } else if (inOrder(X.bs, G)) { sc += 18; exact = true; }
+      if (hits.length >= 2) { const w = minWindow(hits); sc += w <= hits.length + 1 ? 10 : w <= hits.length * 3 ? 6 : w <= 30 ? 2 : 0; }
+    }
+    const cov = G.length ? hit / G.length : 0.5;
+    sc *= 0.25 + cov * cov;
+    out.push({ d: X.d, a: X.a, sc, cov, exact });
+  }
+  let res = out;
+  if (T.quoted) { res = res.filter(r => r.exact); if (!res.length) { res = out; T.quotedMiss = true; } }
+  if (!res.some(r => r.exact) || T.quotedMiss) { if (res.filter(r => r.cov === 1).length >= 1) res = res.filter(r => r.cov >= 0.5); }
+  else res = res.filter(r => r.cov >= 0.5);
+  res.sort((x, y) => y.sc - x.sc);
+  const top = res.slice(0, limit), max = top.length ? top[0].sc : 1;
   top.forEach(r => { r.rel = Math.max(0.15, r.sc / max); r.sents = bestSents(r.a.body, T); });
   return top;
 }
 function bestSents(body, T) {
-  const S = sentSplit(body).map((s, i) => { const l = lnorm(s); let v = 0; T.stems.forEach(st => { if (l.includes(st)) v += 1; }); T.pstems.forEach(ps => { if (ps.every(st => l.includes(st))) v += 2; }); return { s, i, v }; });
-  const top = S.filter(x => x.v > 0).sort((a, b) => b.v - a.v).slice(0, 2).sort((a, b) => a.i - b.i);
-  return top.length ? top.map(x => x.s) : S.slice(0, 1).map(x => x.s.slice(0, 300));
+  const S = sentSplit(body).map((s, i) => {
+    const st = RU.words(s).map(RU.stem); let v = 0;
+    T.groups.forEach(g => { if (st.some(x => g.set.has(x))) v += 2; });
+    if (inOrder(st, T.groups)) v += 4;
+    T.pgroups.forEach(pg => { if (pg.every(g => st.some(x => g.has(x)))) v += 1; });
+    return { s, i, v };
+  });
+  const top = S.filter(x => x.v > 0).sort((a, b) => b.v - a.v || a.i - b.i).slice(0, 2);
+  if (!top.length) return S.slice(0, 1).map(x => x.s.slice(0, 300));
+  // предложение кончается двоеточием — добавляем начало перечня после него
+  return top.map(x => /:$/.test(x.s) ? [x.s, ...S.slice(x.i + 1, x.i + 3).map(y => y.s)].join(' ') : x.s);
 }
 const qnorm = s => lnorm(s).replace(/[«»"“”„]/g, '').replace(/\s+/g, ' ').trim();
 
@@ -128,7 +170,8 @@ async function consultRun() {
         extra = r.text.split(/[,;\n]/).map(s => s.trim()).filter(Boolean).slice(0, 14); res.cost += r.cost || 0;
       } catch (e) { res.err = e.message; }
     }
-    const T = consultTerms(q, extra); res.terms = T.phrases.slice(0, 10); res.T = T;
+    lawIndex(); const fx = CS.noFix ? null : spellFix(q); res.fix = fx;
+    const T = consultTerms(fx ? fx.q : q, extra); res.terms = T.phrases.slice(0, 10); res.T = T;
     res.items = consultSearch(T, useAI ? 8 : 6);
     if (useAI && res.items.length && !res.err) {
       let budget = 16000;
@@ -151,10 +194,11 @@ async function consultRun() {
 function ansHtml(text, items) {
   return esc(text).replace(/\[(\d+)\]/g, (m0, n) => items.some(x => x.no === +n) ? `<sup><button class="lnk" data-act="csJump" data-v="${n}">${n}</button></sup>` : '').split(/\n+/).map(p => `<p>${p}</p>`).join('');
 }
-function quoteHtml(it, words) {
-  if (it.quote) { const sent = sentSplit(it.a.body).find(s => qnorm(s).includes(qnorm(it.quote).slice(0, 40))) || it.quote; const i = qnorm(sent).indexOf(qnorm(it.quote)); return i >= 0 && sent.length < 900 ? markWords(esc(sent), words).replace(esc(it.quote), `<mark class="q">${esc(it.quote)}</mark>`) : `<mark class="q">${esc(it.quote)}</mark>`; }
-  return it.sents.map(s => markWords(esc(s), words)).join(' <span class="dots">…</span> ');
+function quoteHtml(it, T) {
+  if (it.quote) { const sent = sentSplit(it.a.body).find(s => qnorm(s).includes(qnorm(it.quote).slice(0, 40))) || it.quote; return sent.length < 900 && sent.includes(it.quote) ? esc(sent).replace(esc(it.quote), `<mark class="q">${esc(it.quote)}</mark>`) : `<mark class="q">${esc(it.quote)}</mark>`; }
+  return it.sents.map(s => markStems(s, T.strong, T.soft)).join(' <span class="dots">…</span> ');
 }
+const fixBanner = (fx, act) => fx ? `<div class="fixb">${ic('spark')}<span>Исправлено: ${fx.fixes.map(([a, b]) => `<s>${esc(a)}</s> → <b>${esc(b)}</b>`).join(', ')}.</span><button class="lnk" data-act="${act}">Искать как написано</button></div>` : '';
 function consultView() {
   const R = CS.res, can = aiReady(), mode = CS.mode || (can ? 'ai' : 'local');
   const modes = `<button class="chip ${mode === 'ai' ? 'on' : ''}" data-act="csMode" data-v="ai">${ic('spark')} С помощником${can ? '' : ' — не подключён'}</button><button class="chip ${mode === 'local' ? 'on' : ''}" data-act="csMode" data-v="local">Только поиск, без интернета</button><span class="hint">Ищу в вашей библиотеке: ${LW().docs.length} ${plural(LW().docs.length, ['документ', 'документа', 'документов'])}</span>`;
@@ -162,13 +206,12 @@ function consultView() {
   if (!LW().docs.length) body = `<div class="empty">Библиотека пуста — консультации не по чему искать. Добавьте законы и правила на вкладке «Библиотека».</div>`;
   else if (CS.busy) body = `<div class="cbusy"><span class="spin"></span> ${mode === 'ai' ? 'Ищу в библиотеке и спрашиваю помощника…' : 'Ищу в библиотеке…'}</div>`;
   else if (R) {
-    const words = [...R.T.stems, ...R.T.pstems.flat()];
-    body = `${R.terms.length ? `<div class="kw">Понял как: ${R.terms.map(t => `<i>${esc(t)}</i>`).join('')}</div>` : ''}
+    body = `${fixBanner(R.fix, 'csNoFix')}${R.T.quotedMiss ? '<p class="hint warn">Точной фразы в библиотеке нет — показаны близкие результаты.</p>' : ''}${R.terms.length ? `<div class="kw">Понял как: ${R.terms.map(t => `<i>${esc(t)}</i>`).join('')}</div>` : ''}
       ${R.err ? `<p class="hint warn">${esc(R.err)}${R.ai ? ' Показываю результаты поиска без помощника.' : ''}</p>` : ''}
       ${R.answer ? `<div class="ans"><h3>${ic('spark')} Кратко</h3>${ansHtml(R.answer.text, R.items)}<div class="warn">Ответ составлен только по текстам вашей библиотеки. Цитаты ниже сверены с текстами статей${R.items.some(x => x.badQuote) ? ' — неточные цитаты помощника не показаны' : ''}. Это справка, а не юридическая консультация.${R.cost ? ` · стоимость ≈ ${R.cost < 0.01 ? 'меньше 1 коп.' : NF2.format(R.cost) + ' ₽'}` : ''}</div></div>` : ''}
-      ${R.items.length ? `<div class="found">${R.items.map(it => `<div class="fc" id="cs-${it.no}"><div class="fch"><span class="n">${it.no}</span><b>${esc(artLabel(it.d, it.a))}</b><small>${esc(it.a.t && it.d.unit !== 'п' ? it.a.t : it.d.title)}</small><span class="rel">совпадение <i><b style="width:${Math.round(it.rel * 100)}%"></b></i></span></div>
-        <div class="qt">${quoteHtml(it, words)}</div>
-        <div class="fa"><button class="btn sm" data-act="lawOpen" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('ext')} Открыть статью</button><button class="btn sm" data-act="lawMark" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('bookmark')} ${markOf(it.d.id, it.a.id) ? 'В закладках' : 'В закладки'}</button><button class="btn sm" data-act="lawTask" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('link')} В задачу</button><button class="btn sm pri" data-act="csDoc" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('edit')} Составить документ</button></div></div>`).join('')}</div>`
+      ${R.items.length ? `<div class="found">${R.items.map(it => `<div class="fc" id="cs-${it.no}"><div class="fch"><span class="n">${it.no}</span><b>${esc(artLabel(it.d, it.a))}</b>${it.exact ? '<span class="exb">точное совпадение</span>' : ''}<small>${esc(it.a.t && it.d.unit !== 'п' ? it.a.t : it.d.title)}</small><span class="rel">совпадение <i><b style="width:${Math.round(it.rel * 100)}%"></b></i></span></div>
+        <div class="qt">${quoteHtml(it, R.T)}</div>
+        <div class="fa"><button class="btn sm" data-act="lawOpen" data-doc="${it.d.id}" data-art="${it.a.id}" data-from="consult">${ic('ext')} Открыть статью</button><button class="btn sm" data-act="lawMark" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('bookmark')} ${markOf(it.d.id, it.a.id) ? 'В закладках' : 'В закладки'}</button><button class="btn sm" data-act="lawTask" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('link')} В задачу</button><button class="btn sm pri" data-act="csDoc" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('edit')} Составить документ</button></div></div>`).join('')}</div>`
         : `<div class="empty">В библиотеке не нашлось подходящих статей. Попробуйте другие слова${R.ai ? '' : ' или включите помощника — он подскажет юридические термины'}.</div>`}`;
   } else body = `<p class="hint">Опишите ситуацию своими словами — Планер найдёт подходящие статьи в вашей библиотеке и выделит главное.${can ? ' Помощник ответит коротко и сошлётся на статьи.' : ''}</p>`;
   return `<div class="lmain cwrap" id="lmain"><div class="cq"><form class="cqbox" id="csform"><textarea id="cq" rows="2" placeholder="Например: сосед хранит мебель на лестничной площадке — куда жаловаться и что ему грозит?">${esc(CS.q)}</textarea><div class="cqb"><button type="button" class="btn ghost" data-act="csClear" title="Очистить вопрос и результаты">${ic('x')} Очистить</button><button class="btn pri" ${CS.busy ? 'disabled' : ''}>${ic('search')} Найти</button></div></form><div class="cmodes">${modes}</div></div><div class="cres">${body}</div></div>`;
@@ -280,6 +323,7 @@ const dtPreview = () => { clearTimeout(dtT); dtT = setTimeout(() => { const p = 
 const dtBasisDraw = () => { if (UI.view !== 'law' || LF.mode !== 'docs') return; const f = $('.tf'), y = f ? f.scrollTop : 0, s = $('#main .split'), sy = s ? s.scrollTop : 0; render(); if ($('.tf')) $('.tf').scrollTop = y; if ($('#main .split')) $('#main .split').scrollTop = sy; };
 Object.assign(ACT, {
   lawMode: b => { LF.mode = b.dataset.v; render(); },
+  csNoFix: () => { CS.noFix = true; consultRun(); },
   csClear: () => { CS.q = ''; CS.res = null; render(); setTimeout(() => $('#cq') && $('#cq').focus(), 30); },
   csMode: b => { if (b.dataset.v === 'ai' && !aiReady()) { return openSettings('ai'); } CS.mode = b.dataset.v; render(); },
   csJump: b => { const el = $('#cs-' + b.dataset.v); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1300); } },
@@ -338,7 +382,7 @@ document.addEventListener('keydown', e => { if (e.target.id === 'cq' && e.key ==
 document.addEventListener('input', e => {
   const t = e.target;
   if (t.dataset && t.dataset.df) { DR()[t.dataset.df] = t.value; dtPreview(); }
-  if (t.id === 'cq') CS.q = t.value;
+  if (t.id === 'cq') { CS.q = t.value; CS.noFix = false; }
   if (t.id === 'ai-key' || t.id === 'ai-folder') { AIC()[t.id === 'ai-key' ? 'key' : 'folder'] = t.value.trim(); save(); }
 }, true);
 document.addEventListener('change', e => {

@@ -186,17 +186,12 @@ function lawSearch(q, limit = 80) {
     });
     if (out.length) return out;
   }
-  const words = lnorm(q).split(/[^a-zа-я0-9.\-]+/).filter(w => w.length > 1).map(stem); if (!words.length) return out;
-  for (const d of docs) {
-    const dm = lawDocMatch(d, [lnorm(q)]);
-    for (const a of lawArts(d.id)) {
-      if (seen.has(d.id + a.id)) continue;
-      const tt = lnorm(a.t), bb = lnorm(a.body); let sc = 0, ok = true;
-      for (const w of words) { const inT = tt.includes(w), inB = bb.includes(w); if (!inT && !inB && !(dm && lnorm(d.short + ' ' + d.title).includes(w))) { ok = false; break; } sc += inT ? 5 : 1; }
-      if (ok) out.push({ d, a, sc, words });
-    }
-  }
-  return out.sort((x, y) => (y.sc || 0) - (x.sc || 0)).slice(0, limit);
+  // поиск по словам: все формы слова, точные совпадения выше, опечатки исправляются
+  lawIndex();
+  const fx = LF.noFix ? null : spellFix(q), T = consultTerms(fx ? fx.q : q, [], { noSyn: true });
+  if (!T.groups.length) return out;
+  const R = consultSearch(T, limit).filter(r => !seen.has(r.d.id + r.a.id));
+  R.T = T; R.fix = fx; return R;
 }
 function snip(text, words) {
   const t = String(text), lt = lnorm(t); let i = -1;
@@ -218,6 +213,7 @@ function artBodyHtml(d, a, words) {
     const own = /настоящ/i.test(p) || !/(закона|кодекса|постановлени|приказ)/i.test(p);
     h = h.replace(/(стать(?:я|и|е|ю|ей|ями|ях|ям))\s+(\d+(?:[.\-]\d+)*)/gi, (m0, w, n) => own && d.unit === 'ст' && ns.has(n) ? `${w} <button class="lnk alink" data-act="lawGo" data-doc="${d.id}" data-n="${n}">${n}</button>` : m0);
     h = markWords(h, words);
+    if (LF.hl && LF.hl.art === a.id && !words) h = h.replace(/(<[^>]*>)|([^<]+)/g, (m0, tag, txt) => tag || txt.replace(/[А-Яа-яЁё]+/g, w => { const st = RU.stem(w); return LF.hl.strong && LF.hl.strong.has(st) ? `<mark>${w}</mark>` : LF.hl.soft && LF.hl.soft.has(st) ? `<mark class="soft">${w}</mark>` : w; }));
     const note = /^\((в ред\.|введен|утратил|абзац|часть|пункт|п\.|ч\.|подпункт|статья)/i.test(p) || /^\(в\s+ред/i.test(p);
     return `<p class="${note ? 'lnote' : ''}">${h}</p>`;
   }).join('');
@@ -262,7 +258,7 @@ function lawEmpty() {
 }
 function lawDocView(d) {
   const L = lawArts(d.id);
-  if (LF.art) { const a = lawArt(d.id, LF.art); if (a) return `<div class="lview">${MOB() ? `<button class="back" data-act="lawBackToc">${ic('left')} Оглавление</button>` : ''}${artHtml(d, a)}</div>`; }
+  if (LF.art) { const a = lawArt(d.id, LF.art); if (a) return `<div class="lview">${LF.back ? `<button class="back" data-act="lawBack">${ic('left')} ${LF.back === 'consult' ? 'К результатам консультации' : 'К результатам поиска'}</button>` : MOB() ? `<button class="back" data-act="lawBackToc">${ic('left')} Оглавление</button>` : ''}${artHtml(d, a)}</div>`; }
   const tree = lawTree(L), many = L.length > 60;
   return `<div class="lview"><div class="ldhead"><div><h2>${esc(d.short || d.title)}</h2>${d.short ? `<p>${esc(d.title)}</p>` : ''}<small>${L.length} ${d.unit === 'п' ? plural(L.length, ['пункт', 'пункта', 'пунктов']) : plural(L.length, ['статья', 'статьи', 'статей'])}${d.rev ? ' · редакция от ' + d.rev.split('-').reverse().join('.') : ''}</small></div>
     <div class="fbtn"><button class="btn sm" data-act="lawCheck" data-doc="${d.id}">${ic('ext')} Проверить актуальную редакцию</button>${d.url ? `<button class="btn sm ghost" data-act="lawOpenSite" data-id="${d.id}">${ic('ext')} На сайте</button>` : ''}<button class="btn sm ghost" data-act="lawEdit" data-doc="${d.id}">${ic('edit')} Свойства</button></div></div>
@@ -290,9 +286,10 @@ function tocNode(d, k, lvl, many) {
   return `<div class="tg lv${Math.min(lvl, 3)} ${open ? 'open' : ''}" data-tk="${esc(key)}"><button class="tgh" data-act="lawGrp" data-k="${esc(key)}"><i class="tgc">${ic('caret')}</i>${lab}<small>${k.n}</small></button><div class="tgb">${k.arts.map(a => tocArt(d, a)).join('')}${k.kids.map(x => tocNode(d, x, lvl + 1, many)).join('')}</div></div>`;
 }
 function lawResults() {
-  const R = lawSearch(LF.q); const words = LF.q.match(RX_REF) ? [] : lnorm(LF.q).split(/[^a-zа-я0-9.\-]+/).filter(w => w.length > 1).map(stem);
+  const R = lawSearch(LF.q), T = R.T;
   return `<div class="lview"><div class="ldhead"><div><h2>Поиск: «${esc(LF.q)}»</h2><small>${R.length ? R.length + (R.length >= 80 ? '+' : '') + ' ' + plural(R.length, ['совпадение', 'совпадения', 'совпадений']) : 'Ничего не найдено'}</small></div></div>
-    ${R.map(r => `<button class="lres" data-act="lawOpen" data-doc="${r.d.id}" data-art="${r.a.id}" data-q="1"><b>${esc(artLabel(r.d, r.a))}${r.a.t && r.d.unit !== 'п' ? ' — ' + markWords(esc(r.a.t), words) : ''}</b><span>${snip(r.a.body, words)}</span></button>`).join('') || `<div class="empty">Попробуйте другие слова или номер: «ст. 20.4 КоАП», «п. 15»${LW().docs.length ? '' : '. Сначала добавьте документы.'}</div>`}</div>`;
+    ${fixBanner(R.fix, 'lawNoFix')}
+    ${R.map(r => `<button class="lres" data-act="lawOpen" data-doc="${r.d.id}" data-art="${r.a.id}" data-q="1"><b>${esc(artLabel(r.d, r.a))}${r.a.t && r.d.unit !== 'п' ? ' — ' + (T ? markStems(r.a.t, T.strong) : esc(r.a.t)) : ''}${r.exact && T && T.groups.length > 1 ? ' <span class="exb">точное совпадение</span>' : ''}</b><span>${T ? (r.sents || bestSents(r.a.body, T)).map(x => markStems(x, T.strong)).join(' <span class="dots">…</span> ') : esc(r.a.body.slice(0, 220))}</span></button>`).join('') || `<div class="empty">Попробуйте другие слова или номер: «ст. 20.4 КоАП», «п. 15». Точная фраза — в кавычках: «"обязанности застрахованных лиц"»${LW().docs.length ? '' : '. Сначала добавьте документы.'}</div>`}</div>`;
 }
 registerModule({
   id: 'law', order: 6.5, title: 'Право', icon: 'scale', desc: 'Своя библиотека законов: статьи, поиск, закладки, ссылки из задач',
@@ -392,14 +389,23 @@ Object.assign(ACT, {
   lawCrumb: b => {
     const d = lawDoc(b.dataset.doc); if (!d) return; const path = b.dataset.k; closeSheet();
     if (path) { const parts = path.split(' › '); parts.forEach((_, i) => { LF.open[treeKey(d, parts.slice(0, i + 1).join(' › '))] = true; }); }
-    LF.doc = d.id; LF.art = null; LF.q = ''; if (UI.view !== 'law') go('law'); else render();
+    LF.mode = 'lib'; LF.doc = d.id; LF.art = null; LF.q = ''; if (UI.view !== 'law') go('law'); else render();
     if (path) setTimeout(() => { const el = [...document.querySelectorAll('.tg')].find(x => x.dataset.tk === treeKey(d, path)); if (el) { el.scrollIntoView({ block: 'start' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1300); } }, 30);
   },
   lawTab: b => { LF.tab = b.dataset.v; render(); },
-  lawDoc: b => { LF.doc = b.dataset.doc; LF.art = null; LF.q = ''; LF.scrollTop = true; render(); },
-  lawOpen: b => { LF.doc = b.dataset.doc; LF.art = b.dataset.art; if (!b.dataset.q) LF.q = ''; else { LF.lastQ = LF.q; LF.q = ''; } LF.scrollTop = true; closeSheet(); if (UI.view !== 'law') go('law'); else render(); },
-  lawOpenFull: b => { closeSheet(); closeModal(); LF.doc = b.dataset.doc; LF.art = b.dataset.art; LF.q = ''; go('law'); },
-  lawFromSearch: b => { const [doc, art] = b.dataset.id.split(':'); LF.doc = doc; LF.art = art; LF.q = ''; go('law'); },
+  lawDoc: b => { LF.back = null; LF.hl = null; LF.doc = b.dataset.doc; LF.art = null; LF.q = ''; LF.scrollTop = true; render(); },
+  lawOpen: b => {
+    const from = b.dataset.from || (b.dataset.q ? 'search' : null);
+    if (from === 'consult' && CS.res) LF.hl = { art: b.dataset.art, strong: CS.res.T.strong, soft: CS.res.T.soft };
+    else if (from === 'search') { const T = lawSearch(LF.q).T; LF.hl = T ? { art: b.dataset.art, strong: T.strong } : null; LF.lastQ = LF.q; }
+    else if (!LF.hl || LF.hl.art !== b.dataset.art) LF.hl = null;
+    if (from) LF.back = from;
+    LF.mode = 'lib'; LF.doc = b.dataset.doc; LF.art = b.dataset.art; LF.q = ''; LF.scrollTop = true; closeSheet(); if (UI.view !== 'law') go('law'); else render();
+  },
+  lawBack: () => { const f = LF.back; LF.back = null; LF.hl = null; LF.art = null; if (f === 'consult') LF.mode = 'consult'; else if (f === 'search') { LF.q = LF.lastQ || ''; } render(); },
+  lawNoFix: () => { LF.noFix = true; render(); },
+  lawOpenFull: b => { closeSheet(); closeModal(); LF.mode = 'lib'; LF.doc = b.dataset.doc; LF.art = b.dataset.art; LF.q = ''; go('law'); },
+  lawFromSearch: b => { const [doc, art] = b.dataset.id.split(':'); LF.mode = 'lib'; LF.back = null; LF.doc = doc; LF.art = art; LF.q = ''; go('law'); },
   lawGo: b => { const a = lawArts(b.dataset.doc).find(x => x.n === b.dataset.n); if (!a) return; if (sheetOpen()) return lawSheet(b.dataset.doc, a.id); LF.doc = b.dataset.doc; LF.art = a.id; LF.scrollTop = true; render(); },
   lawHome: () => { LF.doc = null; LF.art = null; LF.q = ''; render(); },
   lawBackToc: () => { LF.art = null; render(); },
@@ -441,7 +447,7 @@ Object.assign(ACT, {
 document.addEventListener('submit', e => { if (e.target.id === 'lawq') { e.preventDefault(); e.stopImmediatePropagation(); LF.q = $('#lq').value.trim(); LF.scrollTop = true; lawLoad().then(render); } }, true);
 document.addEventListener('input', e => {
   const t = e.target;
-  if (t.id === 'lq') { clearTimeout(LF.qt); LF.qt = setTimeout(() => { const v = t.value.trim(); if (v.length === 0 || v.length > 2) { LF.q = v; lawLoad().then(() => { render(); const i = $('#lq'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); } }, 350); }
+  if (t.id === 'lq') { LF.noFix = false; clearTimeout(LF.qt); LF.qt = setTimeout(() => { const v = t.value.trim(); if (v.length === 0 || v.length > 2) { LF.q = v; lawLoad().then(() => { render(); const i = $('#lq'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); } }, 350); }
   if (t.id === 'lpq') lawPickDraw();
   if (t.id === 'ltq') { const q = lnorm(t.value); $$('#ltr .lres').forEach(x => { x.hidden = q && !lnorm(x.textContent).includes(q); }); }
   if (t.dataset && t.dataset.lnote) { const m = LW().marks.find(x => x.id === t.dataset.lnote); if (m) { m.note = t.value; save(); } }
