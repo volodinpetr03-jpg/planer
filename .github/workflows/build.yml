@@ -31,13 +31,14 @@ jobs:
         run: npx cap sync android
       - name: Ключ подписи из секретов GitHub
         env:
-          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 || vars.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD || vars.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ]; then
             echo "::warning::Не заданы секреты ANDROID_KEYSTORE_BASE64 и ANDROID_KEYSTORE_PASSWORD — только проверочная сборка, без выпуска"
             echo "HAS_KEY=0" >> "$GITHUB_ENV"; exit 0
           fi
+          echo "::add-mask::$KS_PASS"
           echo "HAS_KEY=1" >> "$GITHUB_ENV"
           echo "$KS_B64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/planer.keystore"
           echo "PLANER_KEYSTORE=$RUNNER_TEMP/planer.keystore" >> "$GITHUB_ENV"
