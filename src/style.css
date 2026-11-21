@@ -1385,3 +1385,10 @@ body.mob .rb.tgt .rbt,body.mob .rb.marked .rbt{display:flex;width:max-content;ma
 .ydfi .ic{width:1rem;height:1rem;color:var(--mute)}
 .ydfi span{flex:none}.ydfi em{margin-left:auto;font-style:normal;font-size:.75rem;color:var(--ok);font-weight:700}
 .ydfi .in{flex:1;height:2rem}
+/* проценты на остаток */
+.intbox{border-top:1px solid var(--line);margin-top:.6rem;padding-top:.4rem}
+.intbox .sline b .ic{width:1.05rem;height:1.05rem;vertical-align:-.15rem;margin-right:.2rem}
+.irate{display:flex;align-items:center;gap:.45rem;margin-bottom:.4rem;flex-wrap:wrap}
+.irate input[type=date]{width:auto;flex:1 1 8rem;min-width:0}.irate [data-ir=rate]{width:4.8rem;flex:none;text-align:right}
+.irate span{color:var(--mute);font-size:.9rem}
+.acc .accint{display:block;font-style:normal;font-size:.8rem;color:#fff;font-weight:700;margin-top:.2rem;opacity:.95}
