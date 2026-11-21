@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld('api', {
     hasAccess: async () => true,
     askAccess: async () => {}
   },
+  stt: req => ipcRenderer.invoke('ai-stt', req),
   focusAlarm: o => ipcRenderer.send('focus:alarm', o),
   focusCancel: () => ipcRenderer.send('focus:cancel'),
   on: (ch, fn) => {

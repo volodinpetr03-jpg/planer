@@ -389,6 +389,20 @@ ipcMain.handle('ai-chat', async (event, req) => {
   } catch (e) { return { status: 0, text: '', error: e.name === 'AbortError' ? 'timeout' : (e.cause && e.cause.code) || e.message }; }
   finally { clearTimeout(timer); }
 });
+// голосовой ввод: Yandex SpeechKit, распознавание (API v1, LPCM 16 кГц). Адрес фиксирован.
+const STT_URL = 'https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?lang=ru-RU&topic=general&format=lpcm&sampleRateHertz=16000';
+ipcMain.handle('ai-stt', async (event, req) => {
+  const key = String((req && req.key) || '').trim(), folder = String((req && req.folder) || '').trim();
+  if (!/^[A-Za-z0-9_\-.]{20,300}$/.test(key) || !/^[a-z0-9]{10,40}$/.test(folder)) return { status: 401, text: '{"error_message":"нет ключа или каталога"}' };
+  const audio = req && req.audio instanceof Uint8Array ? req.audio : null;
+  if (!audio || audio.length < 1000 || audio.length > 1000000) return { status: 400, text: '{"error_message":"неверная запись"}' };
+  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 60000);
+  try {
+    const res = await fetch(STT_URL, { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'application/octet-stream', Authorization: 'Api-Key ' + key, 'x-folder-id': folder, 'x-data-logging-enabled': 'false', 'User-Agent': `Planer/${app.getVersion()}` }, body: audio });
+    return { status: res.status, text: (await res.text()).slice(0, 20000) };
+  } catch (e) { return { status: 0, text: '', error: e.name === 'AbortError' ? 'timeout' : (e.cause && e.cause.code) || e.message }; }
+  finally { clearTimeout(timer); }
+});
 // загрузка закона по ссылке (только http/https, без адресов локальной сети)
 ipcMain.handle('net-get', async (event, url) => {
   let u; try { u = new URL(String(url)); } catch (e) { return { status: 0, error: 'неверная ссылка' }; }

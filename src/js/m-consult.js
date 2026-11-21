@@ -42,6 +42,7 @@ async function aiSettingsTab() {
     <label class="f"><span>Идентификатор каталога</span><input class="in" id="ai-folder" autocomplete="off" value="${esc(c.folder)}" placeholder="b1g…"></label>
     <div class="f"><span>Модель</span>${AIM.map(m => `<label class="airow"><input type="radio" name="ai-model" value="${m.id}" ${c.model === m.id ? 'checked' : ''}><b>${m.t}</b><span>${m.d}</span></label>`).join('')}</div>
     <div><button class="btn" data-act="aiTest">${ic('spark')} Проверить подключение</button> <span class="hint" id="ai-res"></span></div>
+    ${typeof voiceOk === 'function' && voiceOk() ? `<div class="sline"><div class="tx"><b>Голосовой ввод</b><span>Кнопка микрофона в быстром вводе, названии задачи, заметках, комментариях и консультации. Речь распознаёт Yandex SpeechKit по тому же ключу; сервисному аккаунту нужна ещё роль <b>ai.speechkit-stt.user</b>. Около 0,15 ₽ за 15 секунд речи.</span></div><input type="checkbox" class="tog" id="ai-voice" ${D.settings.voice !== false ? 'checked' : ''}></div>` : ''}
     <p class="hint">Где взять ключ: консоль Yandex Cloud → ваш каталог → «Сервисные аккаунты» → создать аккаунт с ролью <b>ai.languageModels.user</b> → «Создать API-ключ». Идентификатор каталога — в адресной строке консоли или на главной странице каталога (начинается с b1g). Подойдёт тот же ключ, что и в других ваших программах с YandexGPT. Один вопрос в консультации обычно стоит меньше рубля.</p>` : '<p class="hint">Помощник работает в программе для Windows и на телефоне.</p>'}`;
 }
 
@@ -388,5 +389,6 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.id === 'ai-on') { AIC().on = t.checked; save(); drawSettings(); }
+  if (t.id === 'ai-voice') { D.settings.voice = t.checked; save(); }
   if (t.name === 'ai-model') { AIC().model = t.value; save(); }
 }, true);

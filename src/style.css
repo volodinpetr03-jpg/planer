@@ -1221,3 +1221,16 @@ body.mob .ned{padding:.4rem .9rem 2rem}
 body.mob .ntitle{font-size:1.35rem}
 body.mob .nsearch .in{width:9rem}
 body.mob .nbody{min-height:50vh}
+/* ---- 3.15: голосовой ввод ---- */
+.ib.mic{flex:none;position:relative;color:var(--mute)}
+.ib.mic:hover{color:var(--acc)}
+.ib.mic.rec{color:#fff;background:var(--hi);box-shadow:0 0 0 calc(var(--lv,0) * 9px + 2px) color-mix(in srgb,var(--hi) 35%,transparent);transition:box-shadow .08s}
+.ib.mic.busy{color:var(--acc);animation:micb 1s linear infinite}
+@keyframes micb{50%{opacity:.35}}
+.qhead .ib.mic{width:2.4rem;height:2.4rem}
+.hasmic{position:relative}
+.hasmic .in.title{padding-right:2.8rem}
+.ib.inmic{position:absolute;right:.35rem;bottom:.35rem}
+.cqbox{position:relative}
+.ib.cqmic{position:absolute;right:.5rem;top:.5rem}
+.cmin .ib.mic{align-self:center}

@@ -350,6 +350,14 @@
         return { status: r.status, text: typeof r.data === 'string' ? r.data : JSON.stringify(r.data) };
       } catch (e) { return { status: 0, text: '', error: /timeout/i.test(String(e && e.message)) ? 'timeout' : String((e && e.message) || e) }; }
     },
+    stt: async req => {
+      try {
+        let s = ''; const u8 = req.audio; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+        const r = await Http.request({ url: 'https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?lang=ru-RU&topic=general&format=lpcm&sampleRateHertz=16000', method: 'POST', responseType: 'text', connectTimeout: 30000, readTimeout: 60000,
+          headers: { 'Content-Type': 'application/octet-stream', Authorization: 'Api-Key ' + String(req.key || '').trim(), 'x-folder-id': String(req.folder || '').trim(), 'x-data-logging-enabled': 'false' }, data: btoa(s), dataType: 'file' });
+        return { status: r.status, text: typeof r.data === 'string' ? r.data : JSON.stringify(r.data) };
+      } catch (e) { return { status: 0, text: '', error: String((e && e.message) || e) }; }
+    },
     focusAlarm: async o => {
       try { if (!(await ensureChannel())) return; await Notif.cancel({ notifications: [{ id: FOCUS_NID }] }).catch(() => {});
         await Notif.schedule({ notifications: [{ id: FOCUS_NID, title: String(o.title || 'Фокус'), body: String(o.body || ''), channelId: CH, smallIcon: 'ic_stat_planer', iconColor: '#4D8DFF', schedule: { at: new Date(o.at), allowWhileIdle: true }, extra: { kind: 'focus' } }] });
