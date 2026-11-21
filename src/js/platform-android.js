@@ -127,6 +127,13 @@
     for (const y of [y0, y0 + 1]) { const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0, dd = m === 2 && d === 29 && !leap ? 28 : d, s = `${y}-${pad2(m)}-${pad2(dd)}`; if (s >= from) return s; }
     return null;
   }
+  function habDue(h, dt) {
+    const ds = x => `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}`, goal = Math.max(1, h.goal || 1), log = h.log || {}, done = s => (log[s] || 0) >= goal;
+    if (done(ds(dt))) return false;
+    if (h.freq === 'days') return (h.days || []).includes(dt.getDay());
+    if (h.freq === 'times') { const w = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() - (dt.getDay() + 6) % 7); let c = 0; for (let i = 0; i < 7; i++) if (done(ds(new Date(w.getFullYear(), w.getMonth(), w.getDate() + i)))) c++; return c < (h.n || 3); }
+    return true;
+  }
   function upcoming(d) {
     if (!d || !Array.isArray(d.tasks)) return [];
     const now = Date.now(), until = now + 21 * 864e5, done = new Set((d.columns || []).filter(c => c.done).map(c => c.id)), out = [], cur = (d.settings && d.settings.currency) || '₽';
@@ -158,7 +165,15 @@
         if (a > now && a < until) out.push({ key: 'date:' + x.id + ':' + occ, at: a, kind: 'date', id: x.id, title: 'Важная дата: ' + x.title, body: `${fmt(occ)}${x.remind ? ' · через ' + x.remind + ' дн.' : ' · сегодня'}` });
       }
     }
-    return out.sort((a, b) => a.at - b.at).slice(0, 120);
+    for (const h of (Array.isArray(d.habits) ? d.habits : [])) {
+      if (h.archived || !h.remind) continue; const [hh, mm] = h.remind.split(':').map(Number);
+      for (let i = 0; i < 7; i++) {
+        const dt = new Date(); dt.setHours(0, 0, 0, 0); dt.setDate(dt.getDate() + i);
+        const a = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), hh, mm).getTime();
+        if (a > now && a < until && habDue(h, dt)) out.push({ key: 'hab:' + h.id + ':' + `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`, at: a, kind: 'hab', id: h.id, title: 'Привычка: ' + (h.icon ? h.icon + ' ' : '') + h.title, body: 'Ещё не отмечено сегодня' });
+      }
+    }
+    return out.sort((a, b) => a.at - b.at).slice(0, 150);
   }
   function scheduleSoon() { clearTimeout(schedT); schedT = setTimeout(schedule, 1500); }
   async function schedule() {
@@ -178,7 +193,7 @@
   Notif.addListener('localNotificationActionPerformed', a => {
     const ex = (a && a.notification && a.notification.extra) || {};
     if (uiLocked) return;
-    if (ex.kind !== 'focus') setTimeout(() => emit(ex.kind === 'pay' ? 'open-pay' : ex.kind === 'date' ? 'reminder-date' : 'open-task', ex.id), 300);
+    if (ex.kind !== 'focus') setTimeout(() => emit(ex.kind === 'pay' ? 'open-pay' : ex.kind === 'date' ? 'reminder-date' : ex.kind === 'hab' ? 'reminder-hab' : 'open-task', ex.id), 300);
   }).catch(() => {});
   // пока приложение открыто — окно напоминания внутри программы, как на компьютере
   let active = true;
@@ -203,6 +218,10 @@
       if (at <= now && now - at < 3 * 864e5 && !data.notified[k]) { data.notified[k] = now; ch = true; emit('reminder-pay', r.id); }
     }
     const n0 = new Date(now), tdS = `${n0.getFullYear()}-${pad2(n0.getMonth() + 1)}-${pad2(n0.getDate())}`;
+    for (const h of (Array.isArray(data.habits) ? data.habits : [])) {
+      if (h.archived || !h.remind || !habDue(h, n0)) continue; const [hh, mm] = h.remind.split(':').map(Number), at = new Date(n0.getFullYear(), n0.getMonth(), n0.getDate(), hh, mm).getTime(), k = 'hab:' + h.id + ':' + tdS;
+      if (at <= now && now - at < 6 * 3600e3 && !data.notified[k]) { data.notified[k] = now; ch = true; emit('reminder-hab', h.id); }
+    }
     for (const x of (Array.isArray(data.dates) ? data.dates : [])) {
       if (x.remind == null) continue; const occ = dateNextA(x, tdS); if (!occ) continue;
       const [y, m, d] = occ.split('-').map(Number), at = new Date(y, m - 1, d, 10).getTime() - x.remind * 864e5, k = 'date:' + x.id + ':' + occ;

@@ -150,6 +150,7 @@ function normalize(d) {
   d.notified = d.notified || {};
   d.dates = Array.isArray(d.dates) ? d.dates : [];
   d.focusLog = Array.isArray(d.focusLog) ? d.focusLog : [];
+  d.habits = Array.isArray(d.habits) ? d.habits : [];
   const bb = d.budget || {}; const db = defBudget();
   d.budget = { accounts: Array.isArray(bb.accounts) && bb.accounts.length ? bb.accounts : db.accounts, categories: Array.isArray(bb.categories) && bb.categories.length ? bb.categories : db.categories, tx: (bb.tx || []).map(x => newTx(x)), regular: bb.regular || [] };
   const ids = new Set(d.columns.map(c => c.id));

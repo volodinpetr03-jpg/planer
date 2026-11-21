@@ -56,7 +56,7 @@ registerModule({
         ${todPays.map(r => `<div class="lrow" data-act="openReg" data-id="${r.id}" style="--c:var(--exp)"><span class="dot"></span><div class="tx"><b>${esc(r.title)}</b><small style="${r.nextDate < td ? 'color:var(--hi)' : ''}">${r.nextDate < td ? 'платёж просрочен' : 'платёж сегодня'}</small></div><span class="am exp">${money0(r.amount)}</span><button class="btn sm" data-act="payReg" data-id="${r.id}">Оплачено</button></div>`).join('')}
         ${plan.map(t => taskLine(t)).join('')}${tod.filter(isDone).map(t => taskLine(t)).join('')}
         ${!plan.length && !todPays.length && !todD ? '<div class="empty">На сегодня ничего нет. Добавьте задачу строкой выше.</div>' : ''}</section>
-      <div class="stk"><section class="pan"><div class="ph2"><h2>Ближайшие дни</h2><span class="spacer"></span>${modOn('calendar') ? `<button class="btn sm ghost" data-act="go" data-v="calendar">Календарь</button>` : ''}</div>${agenda(8)}</section>${datesCard()}</div>
+      <div class="stk">${habDashCard()}<section class="pan"><div class="ph2"><h2>Ближайшие дни</h2><span class="spacer"></span>${modOn('calendar') ? `<button class="btn sm ghost" data-act="go" data-v="calendar">Календарь</button>` : ''}</div>${agenda(8)}</section>${datesCard()}</div>
     </div>
     <div class="grid2" style="margin-bottom:1rem">
       <section class="pan"><div class="ph2"><h2>Продуктивность</h2><small>за 14 дней</small></div><div class="chartbox"><canvas id="ch-prod"></canvas></div></section>

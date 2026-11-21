@@ -128,6 +128,8 @@ function webReminders() {
     if (isDone(t) || (meId && t.who && t.who !== meId)) continue; const f = remPoints(t, now);
     for (const [k, at] of f) if (at <= now && now - at < 12 * 3600e3 && !D.notified[k]) { D.notified[k] = now; ch = true; showAlert(t.id); }
   }
+  { const td = today(), [y, m, d] = td.split('-').map(Number);
+    for (const h of habActive()) { if (!h.remind || hDone(h, td) || !(h.freq === 'times' ? hWeekCnt(h, wkStart(td)) < (h.n || 3) : hSched(h, td))) continue; const [hh, mm] = h.remind.split(':').map(Number), at = new Date(y, m - 1, d, hh, mm).getTime(), k = 'hab:' + h.id + ':' + td; if (at <= now && now - at < 6 * 3600e3 && !D.notified[k]) { D.notified[k] = now; ch = true; showHabAlert(h.id); } } }
   for (const x of D.dates) { if (x.remind == null) continue; const occ = dateNext(x); if (!occ) continue; const [y, m, d] = occ.split('-').map(Number), at = new Date(y, m - 1, d, 10).getTime() - x.remind * 864e5, k = 'date:' + x.id + ':' + occ; if (at <= now && now - at < 3 * 864e5 && !D.notified[k]) { D.notified[k] = now; ch = true; showDateAlert(x.id); } }
   for (const r of B().regular) { if (r.active === false || r.remind == null) continue; const [y, m, d] = r.nextDate.split('-').map(Number), at = new Date(y, m - 1, d, 10).getTime() - r.remind * 864e5, k = 'pay:' + r.id + ':' + r.nextDate; if (at <= now && now - at < 3 * 864e5 && !D.notified[k]) { D.notified[k] = now; ch = true; showPayAlert(r.id); } }
   if (ch) save();
@@ -385,6 +387,7 @@ function startApp(d) {
     window.api.on('reminder', id => { if (UI.locked) return beep(); showAlert(id); });
     window.api.on('reminder-pay', id => { if (UI.locked) return beep(); showPayAlert(id); });
     window.api.on('reminder-date', id => { if (UI.locked) return beep(); showDateAlert(id); });
+    window.api.on('reminder-hab', id => { if (UI.locked) return beep(); showHabAlert(id); });
     window.api.on('open-pay', id => { if (UI.locked) return; closeModal(); openRegForm(id); });
     window.api.on('notified', n => { if (D) D.notified = Object.assign(D.notified || {}, n); });
     window.api.on('lock-now', () => lockNow());

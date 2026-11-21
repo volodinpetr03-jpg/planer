@@ -186,6 +186,15 @@ function dateNextM(x, from) {
   for (const y of [y0, y0 + 1]) { const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0, dd = m === 2 && d === 29 && !leap ? 28 : d, s = `${y}-${p2(m)}-${p2(dd)}`; if (s >= from) return s; }
   return null;
 }
+// привычка на день: нужно ли напоминать (то же, что в src/js/m-habits.js)
+function habState(h, dt) {
+  const p2 = n => String(n).padStart(2, '0'), ds = x => `${x.getFullYear()}-${p2(x.getMonth() + 1)}-${p2(x.getDate())}`, goal = Math.max(1, h.goal || 1), log = h.log || {};
+  const done = s => (log[s] || 0) >= goal, td = ds(dt);
+  if (done(td)) return { due: false };
+  if (h.freq === 'days') return { due: (h.days || []).includes(dt.getDay()) };
+  if (h.freq === 'times') { const w = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() - (dt.getDay() + 6) % 7); let c = 0; for (let i = 0; i < 7; i++) { const x = new Date(w.getFullYear(), w.getMonth(), w.getDate() + i); if (done(ds(x))) c++; } return { due: c < (h.n || 3) }; }
+  return { due: true };
+}
 function checkReminders() {
   if (!data || !Array.isArray(data.tasks)) return;
   const now = Date.now(), doneCols = new Set((data.columns || []).filter(c => c.done).map(c => c.id)), meId = data.share && data.share.me && data.share.me.id;
@@ -228,6 +237,18 @@ function checkReminders() {
       if (uiLocked) notify('Важная дата', 'Откройте планер и введите пароль, чтобы увидеть подробности', () => showWindow()); else
       notify('Важная дата: ' + x.title, left <= 0 ? 'Сегодня' : `Через ${left} дн. — ${occ.split('-').reverse().join('.')}`, () => { showWindow(); win.webContents.send('reminder-date', x.id); });
       if (win) win.webContents.send('reminder-date', x.id);
+    }
+  }
+  // привычки: напоминание в заданное время, если сегодня ещё не отмечено
+  for (const h of (Array.isArray(data.habits) ? data.habits : [])) {
+    if (h.archived || !h.remind) continue;
+    const st = habState(h, nd); if (!st.due) continue;
+    const [hh, mm] = h.remind.split(':').map(Number), at = new Date(nd.getFullYear(), nd.getMonth(), nd.getDate(), hh, mm).getTime(), key = 'hab:' + h.id + ':' + tdS;
+    if (at <= now && now - at < 6 * 3600e3 && !data.notified[key]) {
+      data.notified[key] = now; changed = true;
+      if (uiLocked) notify('Привычка', 'Откройте планер и введите пароль, чтобы увидеть подробности', () => showWindow()); else
+      notify('Привычка: ' + (h.icon ? h.icon + ' ' : '') + h.title, 'Ещё не отмечено сегодня', () => { showWindow(); win.webContents.send('reminder-hab', h.id); });
+      if (win) win.webContents.send('reminder-hab', h.id);
     }
   }
   // чистим старые отметки
