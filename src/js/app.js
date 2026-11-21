@@ -37,6 +37,7 @@ function taskSheet(id) {
   sheet(`<div class="shh"><b>${esc(t.title)}</b><small>${t.date ? dueTxt(t) : 'без даты'}${projOf(t.project) ? ' · ' + esc(projOf(t.project).title) : ''}</small></div>
     <div class="shg"><button data-act="shOpen" data-id="${id}">${ic('edit')}<span>Открыть</span></button><button data-act="shDone" data-id="${id}">${ic('check')}<span>${dn ? 'В работу' : 'Готово'}</span></button><button data-act="shDate" data-id="${id}" data-v="${td}">${ic('clock')}<span>Сегодня</span></button><button data-act="shDate" data-id="${id}" data-v="${addDays(td, 1)}">${ic('cal')}<span>Завтра</span></button></div>
     <div class="shl"><span>Переместить в колонку</span><div class="chips">${D.columns.map(c => `<button class="chip ${c.id === t.col ? 'on' : ''}" data-act="shCol" data-id="${id}" data-v="${c.id}">${esc(c.title)}</button>`).join('')}</div></div>
+    ${dn ? '' : `<div class="shl"><span>Матрица Эйзенхауэра</span><div class="chips">${MQ.map(q => `<button class="chip ${quadOf(t) === q.k ? 'on' : ''}" data-act="shQuad" data-id="${id}" data-v="${q.k}">${q.k}. ${q.t}</button>`).join('')}</div></div>`}
     <div class="shf"><button class="btn ghost" data-act="shDate" data-id="${id}" data-v="">Убрать дату</button><span class="spacer"></span><button class="btn ghost danger" data-act="shDel" data-id="${id}">${ic('trash')} Удалить</button></div>`);
 }
 function sideProj(p, dep) { return `<button class="sproj" data-act="openProject" data-id="${p.id}" style="--c:${p.color};padding-left:${dep ? .95 + dep * 1.05 : .75}rem" title="${esc(p.title)}"><i></i><span>${esc(p.title)}</span>${isShared(p) ? `<b class="shic" title="Общий проект">${ic('users')}</b>` : ''}<small>${projStats(p).pct}%</small></button>`; }
@@ -124,11 +125,10 @@ function webReminders() {
   const now = Date.now(); let ch = false;
   const meId = shareOn() && SH().remMine !== false ? SH().me.id : null;
   for (const t of live()) {
-    if (isDone(t) || (meId && t.who && t.who !== meId)) continue; const f = [];
-    if (t.remind != null && t.date) { const [y, m, d] = t.date.split('-').map(Number), [hh, mm] = (t.time || '09:00').split(':').map(Number); const at = new Date(y, m - 1, d, hh, mm).getTime() - t.remind * 60000; f.push([t.id + ':' + at, at]); }
-    if (t.snooze) f.push([t.id + ':s' + t.snooze, t.snooze]);
+    if (isDone(t) || (meId && t.who && t.who !== meId)) continue; const f = remPoints(t, now);
     for (const [k, at] of f) if (at <= now && now - at < 12 * 3600e3 && !D.notified[k]) { D.notified[k] = now; ch = true; showAlert(t.id); }
   }
+  for (const x of D.dates) { if (x.remind == null) continue; const occ = dateNext(x); if (!occ) continue; const [y, m, d] = occ.split('-').map(Number), at = new Date(y, m - 1, d, 10).getTime() - x.remind * 864e5, k = 'date:' + x.id + ':' + occ; if (at <= now && now - at < 3 * 864e5 && !D.notified[k]) { D.notified[k] = now; ch = true; showDateAlert(x.id); } }
   for (const r of B().regular) { if (r.active === false || r.remind == null) continue; const [y, m, d] = r.nextDate.split('-').map(Number), at = new Date(y, m - 1, d, 10).getTime() - r.remind * 864e5, k = 'pay:' + r.id + ':' + r.nextDate; if (at <= now && now - at < 3 * 864e5 && !D.notified[k]) { D.notified[k] = now; ch = true; showPayAlert(r.id); } }
   if (ch) save();
 }
@@ -236,7 +236,7 @@ document.addEventListener('change', e => {
   const t = e.target, F = UI.form;
   if (F && F.kind === 'task') {
     if (t.dataset.ci !== undefined) { F.t.checklist[+t.dataset.ci].d = t.checked; t.closest('.ci').classList.toggle('d', t.checked); return; }
-    if (['f-date', 'f-time', 'f-rem', 'f-rep'].includes(t.id)) { if (t.id === 'f-time' && t.value && !$('#f-dur').value) $('#f-dur').value = '60'; if (t.id === 'f-date' && !t.value) { $('#f-rem').value = ''; $('#f-rep').value = ''; } taskHint(); return; }
+    if (['f-date', 'f-time', 'f-rem', 'f-rem2', 'f-nag', 'f-rep'].includes(t.id)) { if (t.id === 'f-time' && t.value && !$('#f-dur').value) $('#f-dur').value = '60'; if (t.id === 'f-date' && !t.value) { $('#f-rem').value = ''; $('#f-rem2').value = ''; $('#f-nag').value = ''; $('#f-rep').value = ''; } taskHint(); return; }
   }
   if (F && F.kind === 'task' && t.id === 'f-proj' && $('#f-whow')) { $('#f-whow').hidden = !isShared(projOf(t.value)); return; }
   if (F && F.kind === 'tx' && t.id === 'x-proj') { const ct = F.catTouched; readTx(); drawTxForm(); UI.form.catTouched = ct; return; }
@@ -384,6 +384,7 @@ function startApp(d) {
     window.api.on('new-task', () => { if (UI.locked) return; closeModal(); openTaskForm(null, taskPreset()); });
     window.api.on('reminder', id => { if (UI.locked) return beep(); showAlert(id); });
     window.api.on('reminder-pay', id => { if (UI.locked) return beep(); showPayAlert(id); });
+    window.api.on('reminder-date', id => { if (UI.locked) return beep(); showDateAlert(id); });
     window.api.on('open-pay', id => { if (UI.locked) return; closeModal(); openRegForm(id); });
     window.api.on('notified', n => { if (D) D.notified = Object.assign(D.notified || {}, n); });
     window.api.on('lock-now', () => lockNow());

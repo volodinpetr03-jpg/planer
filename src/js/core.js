@@ -83,11 +83,11 @@ const COLORS = ['#4d8dff', '#3ecf8e', '#f2b441', '#ff6b5e', '#a26bfa', '#2ec4c9'
 let D = null, saveT = null;
 const undoStack = [];
 const DEF_SETTINGS = { closeToTray: true, sound: true, theme: 'dark', accent: '#4d8dff', font: 'Inter', fontSize: 14, zoom: 1, collapsed: false, currency: '₽', startView: 'dashboard', tourDone: false, showSub: false,
-  calTypes: { tasks: true, pays: true, exp: true, dl: true },
+  calTypes: { tasks: true, pays: true, exp: true, dl: true, dates: true },
   modules: { dashboard: true, board: true, calendar: true, projects: true, budget: true, insights: true, auto: true },
   smart: { parser: true, scoring: true, overload: true, autocat: true, suggest: true, rules: true },
   capacity: [180, 360, 360, 360, 360, 360, 180], defDur: 30 };
-const newTask = o => ({ id: uid(), title: '', desc: '', col: null, order: 0, prio: 0, tags: [], project: null, parent: null, postponed: 0, date: null, time: null, dur: null, remind: null, repeat: null, checklist: [], created: Date.now(), doneAt: null, archived: false, snooze: null, ...o });
+const newTask = o => ({ id: uid(), title: '', desc: '', col: null, order: 0, prio: 0, tags: [], project: null, parent: null, postponed: 0, date: null, time: null, dur: null, remind: null, rem2: null, nag: null, repeat: null, checklist: [], created: Date.now(), doneAt: null, archived: false, snooze: null, ...o });
 const newTx = o => ({ id: uid(), type: 'expense', amount: 0, date: today(), account: null, to: null, category: null, project: null, task: null, tags: [], note: '', created: Date.now(), ...o });
 const newProject = o => ({ id: uid(), title: '', color: COLORS[0], desc: '', status: 'active', start: today(), deadline: null, budget: null, folder: null, created: Date.now(), ...o });
 function defBudget() {
@@ -148,6 +148,7 @@ function normalize(d) {
   d.settings.smart = Object.assign(clone(DEF_SETTINGS.smart), (d.settings || {}).smart || {});
   if (!Array.isArray(d.settings.capacity) || d.settings.capacity.length !== 7) d.settings.capacity = clone(DEF_SETTINGS.capacity);
   d.notified = d.notified || {};
+  d.dates = Array.isArray(d.dates) ? d.dates : [];
   const bb = d.budget || {}; const db = defBudget();
   d.budget = { accounts: Array.isArray(bb.accounts) && bb.accounts.length ? bb.accounts : db.accounts, categories: Array.isArray(bb.categories) && bb.categories.length ? bb.categories : db.categories, tx: (bb.tx || []).map(x => newTx(x)), regular: bb.regular || [] };
   const ids = new Set(d.columns.map(c => c.id));

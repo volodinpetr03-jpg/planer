@@ -169,6 +169,23 @@ function dueTs(t) {
   const [hh, mm] = (t.time || '09:00').split(':').map(Number);
   return new Date(y, m - 1, d, hh, mm).getTime();
 }
+// точки напоминаний: основное, второе, «пока не выполню» (та же логика — в src/js/m-plan.js)
+function remPoints(t, now) {
+  const f = [];
+  if (t.date) {
+    const due = dueTs(t);
+    for (const m of [t.remind, t.rem2]) if (m !== null && m !== undefined) { const at = due - m * 60000; f.push([t.id + ':' + at, at]); }
+    if (t.nag && now >= due) { const iv = t.nag * 60000, k = Math.floor((now - due) / iv); if (k * iv <= 864e5) { const at = due + k * iv; f.push([t.id + ':' + at, at]); } }
+  }
+  if (t.snooze) f.push([t.id + ':s' + t.snooze, t.snooze]);
+  return f;
+}
+function dateNextM(x, from) {
+  if (!x.date) return null; if (!x.yearly) return x.date;
+  const [, m, d] = x.date.split('-').map(Number), y0 = +from.slice(0, 4), p2 = n => String(n).padStart(2, '0');
+  for (const y of [y0, y0 + 1]) { const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0, dd = m === 2 && d === 29 && !leap ? 28 : d, s = `${y}-${p2(m)}-${p2(dd)}`; if (s >= from) return s; }
+  return null;
+}
 function checkReminders() {
   if (!data || !Array.isArray(data.tasks)) return;
   const now = Date.now(), doneCols = new Set((data.columns || []).filter(c => c.done).map(c => c.id)), meId = data.share && data.share.me && data.share.me.id;
@@ -177,12 +194,7 @@ function checkReminders() {
   for (const t of data.tasks) {
     if (t.archived || doneCols.has(t.col)) continue;
     if (meId && data.share.remMine !== false && t.who && t.who !== meId) continue; // общая задача другого исполнителя
-    const fire = [];
-    if (t.remind !== null && t.remind !== undefined && t.date) {
-      const at = dueTs(t) - t.remind * 60000;
-      fire.push({ key: t.id + ':' + at, at });
-    }
-    if (t.snooze) fire.push({ key: t.id + ':s' + t.snooze, at: t.snooze });
+    const fire = remPoints(t, now).map(([key, at]) => ({ key, at }));
     for (const f of fire) {
       if (f.at <= now && now - f.at < 12 * 3600000 && !data.notified[f.key]) {
         data.notified[f.key] = now; changed = true;
@@ -203,6 +215,19 @@ function checkReminders() {
       if (uiLocked) notify('Платёж', 'Откройте планер и введите пароль, чтобы увидеть подробности', () => showWindow()); else
       notify('Платёж: ' + r.title, `${Number(r.amount).toLocaleString('ru-RU')} ${cur} · срок ${r.nextDate.split('-').reverse().join('.')}`, () => { showWindow(); win.webContents.send('open-pay', r.id); });
       if (win) win.webContents.send('reminder-pay', r.id);
+    }
+  }
+  const nd = new Date(), tdS = `${nd.getFullYear()}-${String(nd.getMonth() + 1).padStart(2, '0')}-${String(nd.getDate()).padStart(2, '0')}`;
+  for (const x of (Array.isArray(data.dates) ? data.dates : [])) {
+    if (x.remind === null || x.remind === undefined) continue;
+    const occ = dateNextM(x, tdS); if (!occ) continue;
+    const [y, m, d] = occ.split('-').map(Number), at = new Date(y, m - 1, d, 10, 0).getTime() - x.remind * 864e5, key = 'date:' + x.id + ':' + occ;
+    if (at <= now && now - at < 3 * 864e5 && !data.notified[key]) {
+      data.notified[key] = now; changed = true;
+      const left = Math.round((new Date(y, m - 1, d) - new Date(nd.getFullYear(), nd.getMonth(), nd.getDate())) / 864e5);
+      if (uiLocked) notify('Важная дата', 'Откройте планер и введите пароль, чтобы увидеть подробности', () => showWindow()); else
+      notify('Важная дата: ' + x.title, left <= 0 ? 'Сегодня' : `Через ${left} дн. — ${occ.split('-').reverse().join('.')}`, () => { showWindow(); win.webContents.send('reminder-date', x.id); });
+      if (win) win.webContents.send('reminder-date', x.id);
     }
   }
   // чистим старые отметки

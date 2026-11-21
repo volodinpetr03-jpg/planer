@@ -30,7 +30,7 @@ const tagColor = t => { const p = projOf(t.project); if (p) return p.color; cons
 function cardHtml(t, mini) {
   const dn = isDone(t), td = today(), n = t.checklist.length, cd = t.checklist.filter(i => i.d).length, p = projOf(t.project), spent = sumT(taskTx(t.id), 'expense');
   const due = t.date ? `<span class="m ${!dn && t.date < td ? 'over' : !dn && t.date === td ? 'tod' : ''}">${ic('clock')}${!dn && t.date < td ? 'Просрочено · ' : ''}${dueTxt(t)}</span>` : '';
-  const meta = due + (t.remind != null && t.date && !dn ? `<span class="m" title="Напоминание">${ic('bell')}${REMS[t.remind] || ''}</span>` : '') + (t.repeat ? `<span class="m" title="Повтор">${ic('repeat')}${REPS[t.repeat]}</span>` : '') + (n ? `<span class="m ${cd === n ? 'okc' : ''}">${ic('list')}${cd}/${n}</span>` : '') + (spent ? `<span class="m mon" title="Расходы по задаче">${ic('coin')}${money0(spent)}</span>` : '') + ((t.laws || []).length ? `<span class="m law" data-act="lawChip" data-doc="${t.laws[0].doc}" data-art="${t.laws[0].art}" title="Открыть статью">§ ${esc(t.laws[0].label)}${t.laws.length > 1 ? ' +' + (t.laws.length - 1) : ''}</span>` : '');
+  const meta = due + ((t.remind != null || t.nag) && t.date && !dn ? `<span class="m" title="Напоминание">${ic('bell')}${remLabel(t)}</span>` : '') + (t.repeat ? `<span class="m" title="Повтор">${ic('repeat')}${REPS[t.repeat]}</span>` : '') + (n ? `<span class="m ${cd === n ? 'okc' : ''}">${ic('list')}${cd}/${n}</span>` : '') + (spent ? `<span class="m mon" title="Расходы по задаче">${ic('coin')}${money0(spent)}</span>` : '') + ((t.laws || []).length ? `<span class="m law" data-act="lawChip" data-doc="${t.laws[0].doc}" data-art="${t.laws[0].art}" title="Открыть статью">§ ${esc(t.laws[0].label)}${t.laws.length > 1 ? ' +' + (t.laws.length - 1) : ''}</span>` : '');
   const sp = subProgress(t.id), par = t.parent && byId(t.parent);
   const top = (t.who && isShared(p) ? whoChip(t.who) : '') + (p ? projChip(p) : '') + tagsHtml(t) + (t.prio === 2 && !dn ? '<span class="pri-t">Срочно</span>' : '');
   const metaSub = sp.n ? `<span class="m ${sp.d === sp.n ? 'okc' : ''}" title="Подзадачи">${ic('sub')}${sp.d}/${sp.n} подзадач</span>` : '';
@@ -129,7 +129,11 @@ function openTaskForm(id, preset) {
     </div>
     <div class="row two">
       <label class="f"><span>Напоминание</span><select class="in" id="f-rem">${opt(REM, t.remind)}</select></label>
-      <label class="f"><span>Повтор</span><select class="in" id="f-rep">${opt(REP, t.repeat)}</select></label>
+      <label class="f"><span>Ещё напоминание</span><select class="in" id="f-rem2">${opt(REM, t.rem2)}</select></label>
+    </div>
+    <div class="row two">
+      <label class="f"><span>Напоминать, пока не выполню</span><select class="in" id="f-nag">${opt(NAG, t.nag)}</select></label>
+      <label class="f"><span>Повтор задачи</span><select class="in" id="f-rep">${opt(REP, t.repeat)}</select></label>
     </div>
     <p class="hint" id="f-hint"></p>
     <div class="f"><span>Подзадачи ${kidsL.length ? `· ${subProgress(t.id).d} из ${subProgress(t.id).n}` : ''} <em>— полноценные задачи со своими сроками</em></span>${kidsL.map(k => taskLine(k, { noProj: true, noCol: false })).join('')}<input class="in" id="f-subadd" placeholder="+ Подзадача — Enter (понимает «завтра», «в 15:00», «#тег»)" maxlength="200"></div>
@@ -146,15 +150,14 @@ function drawCl() {
   el.innerHTML = UI.form.t.checklist.map((c, i) => `<div class="ci ${c.d ? 'd' : ''}"><input type="checkbox" data-ci="${i}" ${c.d ? 'checked' : ''} aria-label="Выполнено"><input class="in" data-ct="${i}" value="${esc(c.t)}" aria-label="Пункт чек-листа"><button type="button" class="ib sm" data-act="fcldel" data-i="${i}" aria-label="Удалить пункт">${ic('x')}</button></div>`).join('');
 }
 function taskHint() {
-  const d = $('#f-date').value, tm = $('#f-time').value, rem = $('#f-rem'), rep = $('#f-rep'), h = $('#f-hint');
-  rem.disabled = rep.disabled = !d;
+  const d = $('#f-date').value, tm = $('#f-time').value, rem = $('#f-rem'), rem2 = $('#f-rem2'), nag = $('#f-nag'), rep = $('#f-rep'), h = $('#f-hint');
+  rem.disabled = rem2.disabled = nag.disabled = rep.disabled = !d;
   if (!d) { h.textContent = 'Напоминание и повтор включаются, когда указана дата.'; return; }
   const parts = [];
-  if (rem.value !== '') {
-    const [y, m, dd] = d.split('-').map(Number), [hh, mm] = (tm || '09:00').split(':').map(Number);
-    const at = new Date(new Date(y, m - 1, dd, hh, mm).getTime() - Number(rem.value) * 60000);
-    parts.push(`Напомню ${human(ymd(at)).toLowerCase()} в ${pad(at.getHours())}:${pad(at.getMinutes())}${tm ? '' : ' (время не указано — считаю от 9:00)'}.`);
-  }
+  const [y, m, dd] = d.split('-').map(Number), [hh, mm] = (tm || '09:00').split(':').map(Number), due = new Date(y, m - 1, dd, hh, mm).getTime();
+  const rs = [...new Set([rem.value, rem2.value].filter(v => v !== '').map(Number))].sort((a, b) => b - a);
+  if (rs.length) parts.push('Напомню ' + rs.map(v => { const at = new Date(due - v * 60000); return `${human(ymd(at)).toLowerCase()} в ${pad(at.getHours())}:${pad(at.getMinutes())}`; }).join(' и ') + (tm ? '' : ' (время не указано — считаю от 9:00)') + '.');
+  if (nag.value) parts.push(`После срока буду напоминать каждые ${durTxt(+nag.value)}, пока задача не выполнена (не дольше суток).`);
   if (rep.value) parts.push('После выполнения задача сама появится на следующую дату.');
   if (SM().overload) { const id = UI.form && UI.form.t.id, l = loadOf(d, id) + (+$('#f-dur').value || D.settings.defDur), c = capOf(d); parts.push(`Загрузка дня с этой задачей: ${durTxt(l)} из ${durTxt(c)}${l > c ? ' — день перегружен.' : '.'}`); h.classList.toggle('warn', l > c); }
   h.textContent = parts.join(' ');
@@ -165,7 +168,8 @@ function readTaskForm() {
   if ($('#f-who')) { const prev = (byId(t.id) || {}).who || null; t.who = isShared(projOf(t.project)) ? ($('#f-who').value || null) : (t.who || null); if (t.who !== prev) t.asg = t.who ? SH().me.id : null; }
   const nd = $('#f-date').value || null; if (!UI.form.isNew) { const o = byId(t.id); if (o && o.date && nd && nd > o.date) t.postponed = (o.postponed || 0) + 1; }
   t.date = nd; t.time = t.date ? ($('#f-time').value || null) : null; t.dur = +$('#f-dur').value || null;
-  t.remind = t.date && $('#f-rem').value !== '' ? Number($('#f-rem').value) : null; t.repeat = t.date ? ($('#f-rep').value || null) : null;
+  t.remind = t.date && $('#f-rem').value !== '' ? Number($('#f-rem').value) : null; t.rem2 = t.date && $('#f-rem2').value !== '' ? Number($('#f-rem2').value) : null; t.nag = t.date && $('#f-nag').value ? Number($('#f-nag').value) : null;
+  if (t.rem2 === t.remind) t.rem2 = null; if (t.remind == null && t.rem2 != null) { t.remind = t.rem2; t.rem2 = null; } t.repeat = t.date ? ($('#f-rep').value || null) : null;
   const ad = $('#f-cladd').value.trim(); if (ad) { t.checklist.push({ t: ad, d: false }); $('#f-cladd').value = ''; }
   t.checklist = t.checklist.filter(c => c.t.trim());
   return t;

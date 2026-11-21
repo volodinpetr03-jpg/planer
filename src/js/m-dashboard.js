@@ -8,6 +8,7 @@ function agenda(days) {
   for (let i = 0; i < days; i++) {
     const d = addDays(td, i), items = [];
     D.projects.filter(p => p.deadline === d && p.status !== 'archived' && p.status !== 'done').forEach(p => items.push(`<div class="lrow" data-act="openProject" data-id="${p.id}" style="--c:${p.color}"><span class="dot"></span><div class="tx"><b>Срок проекта: ${esc(p.title)}</b><small>${projStats(p).pct}% готово</small></div></div>`));
+    datesOn(d).forEach(x => { const yrs = dateYears(x, d); items.push(`<div class="lrow" data-act="dateEdit" data-id="${x.id}" style="--c:var(--mid)"><span class="emo">${(DKIND[x.kind] || DKIND.other)[1]}</span><div class="tx"><b>${esc(x.title)}</b><small>${(DKIND[x.kind] || DKIND.other)[0].toLowerCase()}${yrs > 0 ? ' · ' + yrs + ' ' + plural(yrs, ['год', 'года', 'лет']) : ''}</small></div></div>`); });
     regularOn(d).forEach(r => items.push(`<div class="lrow" data-act="openReg" data-id="${r.id}" style="--c:var(--exp)"><span class="dot"></span><div class="tx"><b>${esc(r.title)}</b><small>регулярный платёж</small></div><span class="am exp">${money0(r.amount)}</span></div>`));
     live().filter(t => t.date === d && !isDone(t)).sort((a, b) => (a.time || '99').localeCompare(b.time || '99')).forEach(t => items.push(taskLine(t, { noCol: true })));
     if (items.length && i > 0) out.push(`<div class="daygrp"><h3>${dayLong(d)}<small>${items.length}</small></h3>${items.join('')}</div>`);
@@ -50,12 +51,12 @@ registerModule({
     </div>
     ${givenHtml()}
     <div class="grid3" style="margin-bottom:1rem">
-      <section class="pan"><div class="ph2"><h2>План на сегодня</h2><small>${plan.length} ${plural(plan.length, PT)}</small><span class="spacer"></span></div>
+      <section class="pan"><div class="ph2"><h2>План на сегодня</h2><small>${plan.length} ${plural(plan.length, PT)}</small><span class="spacer"></span>${modOn('board') ? `<button class="btn sm" data-act="dayPlan" title="Подобрать важные задачи в свободное время сегодня">${ic('wand')} План дня</button>` : ''}</div>
         ${modOn('board') ? `<form class="cadd" data-col="${firstCol().id}" data-date="${td}" style="padding:0 0 .5rem"><input placeholder="+ Задача на сегодня — Enter" aria-label="Задача на сегодня"></form>` : ''}
         ${todPays.map(r => `<div class="lrow" data-act="openReg" data-id="${r.id}" style="--c:var(--exp)"><span class="dot"></span><div class="tx"><b>${esc(r.title)}</b><small style="${r.nextDate < td ? 'color:var(--hi)' : ''}">${r.nextDate < td ? 'платёж просрочен' : 'платёж сегодня'}</small></div><span class="am exp">${money0(r.amount)}</span><button class="btn sm" data-act="payReg" data-id="${r.id}">Оплачено</button></div>`).join('')}
         ${plan.map(t => taskLine(t)).join('')}${tod.filter(isDone).map(t => taskLine(t)).join('')}
         ${!plan.length && !todPays.length && !todD ? '<div class="empty">На сегодня ничего нет. Добавьте задачу строкой выше.</div>' : ''}</section>
-      <section class="pan"><div class="ph2"><h2>Ближайшие дни</h2><span class="spacer"></span>${modOn('calendar') ? `<button class="btn sm ghost" data-act="go" data-v="calendar">Календарь</button>` : ''}</div>${agenda(8)}</section>
+      <div class="stk"><section class="pan"><div class="ph2"><h2>Ближайшие дни</h2><span class="spacer"></span>${modOn('calendar') ? `<button class="btn sm ghost" data-act="go" data-v="calendar">Календарь</button>` : ''}</div>${agenda(8)}</section>${datesCard()}</div>
     </div>
     <div class="grid2" style="margin-bottom:1rem">
       <section class="pan"><div class="ph2"><h2>Продуктивность</h2><small>за 14 дней</small></div><div class="chartbox"><canvas id="ch-prod"></canvas></div></section>

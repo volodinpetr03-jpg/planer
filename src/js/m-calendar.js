@@ -24,7 +24,8 @@ function vWeek() {
     const items = L.filter(t => t.date === d && !t.time).sort(byOrder).map(t => `<div class="ad p${t.prio} ${isDone(t) ? 'done' : ''}" draggable="true" data-id="${t.id}" data-act="openTask" style="--c:${tagColor(t)}" title="${esc(t.title)}">${esc(t.title)}</div>`);
     const pays = CT().pays ? regularOn(d).map(r => `<div class="ad pay" data-act="openReg" data-id="${r.id}" title="${esc(r.title)} — ${money(r.amount)}">${ic('coin')} ${esc(r.title)} · ${money0(r.amount)}</div>`) : [];
     const dls = CT().dl ? D.projects.filter(p => p.deadline === d && p.status !== 'archived').map(p => `<div class="ad dl" data-act="openProject" data-id="${p.id}" style="--c:${p.color}">Срок: ${esc(p.title)}</div>`) : [];
-    return `<div data-adrop="${d}">${dls.join('')}${pays.join('')}${items.join('')}</div>`;
+    const dts = CT().dates !== false ? datesOn(d).map(x => `<div class="ad idt" data-act="dateEdit" data-id="${x.id}" title="${esc(x.title)}">${(DKIND[x.kind] || DKIND.other)[1]} ${esc(x.title)}</div>`) : [];
+    return `<div data-adrop="${d}">${dts.join('')}${dls.join('')}${pays.join('')}${items.join('')}</div>`;
   }).join('')}</div>`;
   const n = new Date(), nm = n.getHours() * 60 + n.getMinutes();
   const cols = days.map(d => {
@@ -45,7 +46,7 @@ function vMonth() {
   <div class="mgrid" style="grid-template-rows:repeat(${cells.length / 7},minmax(0,1fr))">${cells.map(s => {
     const it = L.filter(t => t.date === s).sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
     const pays = CT().pays ? regularOn(s) : [], dls = CT().dl ? D.projects.filter(p => p.deadline === s && p.status !== 'archived') : [], e = CT().exp ? dayExp(s) : 0;
-    const rows = dls.map(p => `<span class="mi dl" style="--c:${p.color}">Срок: ${esc(p.title)}</span>`).concat(pays.map(r => `<span class="mi pay">${esc(r.title)} · ${money0(r.amount)}</span>`)).concat(it.map(t => `<span class="mi ${isDone(t) ? 'done' : ''}" draggable="true" data-id="${t.id}" style="--c:${tagColor(t)}">${t.time ? t.time + ' ' : ''}${esc(t.title)}</span>`));
+    const rows = (CT().dates !== false ? datesOn(s) : []).map(x => `<span class="mi idt">${(DKIND[x.kind] || DKIND.other)[1]} ${esc(x.title)}</span>`).concat(dls.map(p => `<span class="mi dl" style="--c:${p.color}">Срок: ${esc(p.title)}</span>`)).concat(pays.map(r => `<span class="mi pay">${esc(r.title)} · ${money0(r.amount)}</span>`)).concat(it.map(t => `<span class="mi ${isDone(t) ? 'done' : ''}" draggable="true" data-id="${t.id}" style="--c:${tagColor(t)}">${t.time ? t.time + ' ' : ''}${esc(t.title)}</span>`));
     return `<div class="mc ${mkey(s) !== k ? 'out' : ''} ${s === td ? 'tod' : ''}" data-act="calDay" data-d="${s}" data-mdrop="${s}" tabindex="0" role="button" aria-label="${dayLong(s)}"><div class="mtop"><span class="mn">${pd(s).getDate()}</span>${e ? `<span class="mexp">−${NF0.format(e)}</span>` : ''}</div>${SM().overload && loadOf(s) > capOf(s) && s >= td ? '<span class="mover">перегруз</span>' : ''}${rows.slice(0, 4).join('')}${rows.length > 4 ? `<span class="more">ещё ${rows.length - 4}</span>` : ''}</div>`;
   }).join('')}</div></div>`;
 }
@@ -58,7 +59,7 @@ registerModule({
     else if (CF.mode === 'week') { const we = addDays(CF.ws, 6), x = pd(CF.ws), y = pd(we); title = (x.getMonth() === y.getMonth() ? `${x.getDate()}–${y.getDate()} ${MG[y.getMonth()]}` : `${x.getDate()} ${MGS[x.getMonth()]} – ${y.getDate()} ${MGS[y.getMonth()]}`) + ' ' + y.getFullYear(); }
     else title = mTitle(CF.month);
     nav = `<div class="chips"><button class="ib" data-act="calPrev" aria-label="Назад" title="Назад  ←">${ic('left')}</button><button class="btn sm" data-act="calToday">Сегодня</button><button class="ib" data-act="calNext" aria-label="Вперёд" title="Вперёд  →">${ic('right')}</button></div>`;
-    const T = [['tasks', 'Задачи'], ['pays', 'Платежи'], ['exp', 'Расходы'], ['dl', 'Сроки проектов']];
+    const T = [['tasks', 'Задачи'], ['pays', 'Платежи'], ['exp', 'Расходы'], ['dl', 'Сроки проектов'], ['dates', 'Важные даты']];
     return `<h1 style="min-width:15rem">${title}</h1>${nav}<div class="subtabs"><button class="${CF.mode === 'week' ? 'on' : ''}" data-act="calMode" data-v="week">${MOB() ? 'День' : 'Неделя'}</button><button class="${CF.mode === 'month' ? 'on' : ''}" data-act="calMode" data-v="month">Месяц</button></div><span class="sep"></span>
       <div class="chips">${T.map(([k, l]) => `<button class="chip ${CT()[k] ? 'on' : ''}" data-act="calType" data-v="${k}" aria-pressed="${CT()[k]}">${l}</button>`).join('')}</div>`;
   },

@@ -119,6 +119,14 @@
   }
   const dueTs = t => { const [y, m, d] = t.date.split('-').map(Number), [hh, mm] = (t.time || '09:00').split(':').map(Number); return new Date(y, m - 1, d, hh, mm).getTime(); };
   const nid = k => { let h = 7; for (const ch of String(k)) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h) % 2000000000 + 1; };
+  const pad2 = n => String(n).padStart(2, '0');
+  const nextYearFrom = s => (+s.slice(0, 4) + 1) + s.slice(4);
+  function dateNextA(x, from) {
+    if (!x.date) return null; if (!x.yearly) return x.date >= from ? x.date : null;
+    const [, m, d] = x.date.split('-').map(Number), y0 = +from.slice(0, 4);
+    for (const y of [y0, y0 + 1]) { const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0, dd = m === 2 && d === 29 && !leap ? 28 : d, s = `${y}-${pad2(m)}-${pad2(dd)}`; if (s >= from) return s; }
+    return null;
+  }
   function upcoming(d) {
     if (!d || !Array.isArray(d.tasks)) return [];
     const now = Date.now(), until = now + 21 * 864e5, done = new Set((d.columns || []).filter(c => c.done).map(c => c.id)), out = [], cur = (d.settings && d.settings.currency) || '₽';
@@ -128,16 +136,29 @@
       if (t.archived || done.has(t.col)) continue;
       if (mineOnly && t.who && t.who !== meId) continue;
       const at = [];
-      if (t.remind != null && t.date) at.push(dueTs(t) - t.remind * 60000);
+      if (t.date) {
+        const due = dueTs(t);
+        for (const m of [t.remind, t.rem2]) if (m != null) at.push(due - m * 60000);
+        if (t.nag) { const iv = t.nag * 60000; let n = 0; for (let a = due; a <= due + 864e5 && a < until && n < 24; a += iv) if (a > now) { at.push(a); n++; } }
+      }
       if (t.snooze) at.push(t.snooze);
-      for (const a of at) if (a > now && a < until) out.push({ key: t.id + ':' + a, at: a, kind: 'task', id: t.id, title: 'Напоминание: ' + t.title, body: (t.date ? `Срок: ${fmt(t.date)} ${t.time || ''}` : '') + (t.desc ? '\n' + t.desc.slice(0, 120) : '') });
+      for (const a of [...new Set(at)]) if (a > now && a < until) out.push({ key: t.id + ':' + a, at: a, kind: 'task', id: t.id, title: 'Напоминание: ' + t.title, body: (t.date ? `Срок: ${fmt(t.date)} ${t.time || ''}` : '') + (t.desc ? '\n' + t.desc.slice(0, 120) : '') });
     }
     for (const r of ((d.budget && d.budget.regular) || [])) {
       if (r.active === false || r.remind == null || !r.nextDate) continue;
       const [y, m, dd] = r.nextDate.split('-').map(Number), a = new Date(y, m - 1, dd, 10).getTime() - r.remind * 864e5;
       if (a > now && a < until) out.push({ key: 'pay:' + r.id + ':' + r.nextDate, at: a, kind: 'pay', id: r.id, title: 'Платёж: ' + r.title, body: `${Number(r.amount).toLocaleString('ru-RU')} ${cur} · срок ${fmt(r.nextDate)}` });
     }
-    return out.sort((a, b) => a.at - b.at).slice(0, 60);
+    const td0 = new Date(now), tdS = `${td0.getFullYear()}-${pad2(td0.getMonth() + 1)}-${pad2(td0.getDate())}`;
+    for (const x of (Array.isArray(d.dates) ? d.dates : [])) {
+      if (x.remind == null) continue;
+      for (const from of [tdS, nextYearFrom(tdS)]) {
+        const occ = dateNextA(x, from); if (!occ) continue;
+        const [y, m, dd] = occ.split('-').map(Number), a = new Date(y, m - 1, dd, 10).getTime() - x.remind * 864e5;
+        if (a > now && a < until) out.push({ key: 'date:' + x.id + ':' + occ, at: a, kind: 'date', id: x.id, title: 'Важная дата: ' + x.title, body: `${fmt(occ)}${x.remind ? ' · через ' + x.remind + ' дн.' : ' · сегодня'}` });
+      }
+    }
+    return out.sort((a, b) => a.at - b.at).slice(0, 120);
   }
   function scheduleSoon() { clearTimeout(schedT); schedT = setTimeout(schedule, 1500); }
   async function schedule() {
@@ -157,7 +178,7 @@
   Notif.addListener('localNotificationActionPerformed', a => {
     const ex = (a && a.notification && a.notification.extra) || {};
     if (uiLocked) return;
-    setTimeout(() => emit(ex.kind === 'pay' ? 'open-pay' : 'open-task', ex.id), 300);
+    setTimeout(() => emit(ex.kind === 'pay' ? 'open-pay' : ex.kind === 'date' ? 'reminder-date' : 'open-task', ex.id), 300);
   }).catch(() => {});
   // пока приложение открыто — окно напоминания внутри программы, как на компьютере
   let active = true;
@@ -168,7 +189,11 @@
     const meId = data.share && data.share.me && data.share.me.id, mineOnly = meId && data.share.remMine !== false;
     for (const t of data.tasks) {
       if (t.archived || done.has(t.col) || (mineOnly && t.who && t.who !== meId)) continue; const f = [];
-      if (t.remind != null && t.date) { const at = dueTs(t) - t.remind * 60000; f.push([t.id + ':' + at, at]); }
+      if (t.date) {
+        const due = dueTs(t);
+        for (const m of [t.remind, t.rem2]) if (m != null) { const at = due - m * 60000; f.push([t.id + ':' + at, at]); }
+        if (t.nag && now >= due) { const iv = t.nag * 60000, k = Math.floor((now - due) / iv); if (k * iv <= 864e5) { const at = due + k * iv; f.push([t.id + ':' + at, at]); } }
+      }
       if (t.snooze) f.push([t.id + ':s' + t.snooze, t.snooze]);
       for (const [k, at] of f) if (at <= now && now - at < 12 * 3600e3 && !data.notified[k]) { data.notified[k] = now; ch = true; emit('reminder', t.id); }
     }
@@ -176,6 +201,12 @@
       if (r.active === false || r.remind == null || !r.nextDate) continue;
       const [y, m, d] = r.nextDate.split('-').map(Number), at = new Date(y, m - 1, d, 10).getTime() - r.remind * 864e5, k = 'pay:' + r.id + ':' + r.nextDate;
       if (at <= now && now - at < 3 * 864e5 && !data.notified[k]) { data.notified[k] = now; ch = true; emit('reminder-pay', r.id); }
+    }
+    const n0 = new Date(now), tdS = `${n0.getFullYear()}-${pad2(n0.getMonth() + 1)}-${pad2(n0.getDate())}`;
+    for (const x of (Array.isArray(data.dates) ? data.dates : [])) {
+      if (x.remind == null) continue; const occ = dateNextA(x, tdS); if (!occ) continue;
+      const [y, m, d] = occ.split('-').map(Number), at = new Date(y, m - 1, d, 10).getTime() - x.remind * 864e5, k = 'date:' + x.id + ':' + occ;
+      if (at <= now && now - at < 3 * 864e5 && !data.notified[k]) { data.notified[k] = now; ch = true; emit('reminder-date', x.id); }
     }
     if (ch) emit('notified', data.notified);
   }, 15000);

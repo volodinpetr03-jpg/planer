@@ -42,7 +42,7 @@ contextBridge.exposeInMainWorld('api', {
     askAccess: async () => {}
   },
   on: (ch, fn) => {
-    if (!['open-task', 'new-task', 'reminder', 'notified', 'open-pay', 'reminder-pay', 'lock-now'].includes(ch)) return;
+    if (!['open-task', 'new-task', 'reminder', 'notified', 'open-pay', 'reminder-pay', 'reminder-date', 'lock-now'].includes(ch)) return;
     ipcRenderer.on(ch, (e, arg) => fn(arg));
   }
 });
