@@ -35,20 +35,24 @@ jobs:
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ]; then
-            echo "::error::Не заданы секреты ANDROID_KEYSTORE_BASE64 и ANDROID_KEYSTORE_PASSWORD — APK нечем подписать"; exit 1
+            echo "::warning::Не заданы секреты ANDROID_KEYSTORE_BASE64 и ANDROID_KEYSTORE_PASSWORD — только проверочная сборка, без выпуска"
+            echo "HAS_KEY=0" >> "$GITHUB_ENV"; exit 0
           fi
+          echo "HAS_KEY=1" >> "$GITHUB_ENV"
           echo "$KS_B64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/planer.keystore"
           echo "PLANER_KEYSTORE=$RUNNER_TEMP/planer.keystore" >> "$GITHUB_ENV"
           echo "PLANER_KEYSTORE_PASSWORD=$(echo "$KS_PASS" | tr -d ' \r\n')" >> "$GITHUB_ENV"
       - name: Сборка
         working-directory: mobile/android
-        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+        run: chmod +x gradlew && if [ "$HAS_KEY" = 1 ]; then ./gradlew assembleRelease --no-daemon; else ./gradlew assembleDebug --no-daemon; fi
       - name: Файл
+        if: env.HAS_KEY == '1'
         run: |
           V=$(node -p "require('./package.json').version")
           echo "V=$V" >> "$GITHUB_ENV"
           mkdir -p out && cp mobile/android/app/build/outputs/apk/release/app-release.apk "out/Planer-$V.apk"
       - name: Выпуск
+        if: env.HAS_KEY == '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
