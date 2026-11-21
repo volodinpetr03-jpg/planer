@@ -37,7 +37,7 @@ function mdRender(src) {
   });
   close(); return out.join('');
 }
-const notePlain = s => String(s || '').replace(/^#{1,3} /gm, '').replace(/^> ?/gm, '').replace(/^\s*[-*] \[( |x|х)\] /gim, '').replace(/^\s*[-*•] /gm, '• ').replace(/\*\*|`/g, '');
+const notePlain = s => String(s || '').replace(/\[\[([^\]\n]+)\]\]/g, '$1').replace(/^#{1,3} /gm, '').replace(/^> ?/gm, '').replace(/^\s*[-*] \[( |x|х)\] /gim, '').replace(/^\s*[-*•] /gm, '• ').replace(/\*\*|`/g, '');
 const noteSnippet = n => notePlain(n.body).replace(/\s+/g, ' ').trim().slice(0, 110);
 const noteTitle = n => n.title || notePlain(n.body).split('\n').find(x => x.trim()) || 'Без названия';
 const noteChecks = n => { const all = (n.body.match(/^\s*[-*] \[( |x|х)\] /gim) || []), d = all.filter(x => /\[(x|х)\]/i.test(x)).length; return { n: all.length, d }; };

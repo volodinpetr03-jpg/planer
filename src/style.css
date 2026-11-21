@@ -1329,3 +1329,45 @@ body.mob .rdoc{font-size:calc(1.02rem * var(--lfs))}
 body.mob .rbt{position:static;display:none}
 body.mob .rb.tgt .rbt,body.mob .rb.marked .rbt{display:flex;width:max-content;margin:.2rem 0 0 auto}
 .rdoc p.c{text-align:center;text-indent:0;font-weight:600}
+/* ---- 3.19: связи ---- */
+.lkw>span .ic{width:1rem;height:1rem;vertical-align:-.15rem}
+.lkrow{display:flex;align-items:center;gap:.55rem;padding:.35rem .5rem;border:1px solid var(--line);border-radius:.7rem;background:var(--panel);margin-bottom:.35rem}
+.lkrow .tx{flex:1;min-width:0;text-align:left;border:0;background:none;color:var(--tx);cursor:pointer;padding:0;font:inherit}
+.lkrow .tx b{display:block;font-weight:600;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lkrow .tx small{display:block;color:var(--mute);font-size:.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lkrow .tx:hover b{color:var(--acc)}
+.lkrow.bad{opacity:.55}.lkrow.dn .tx b{text-decoration:line-through;opacity:.7}
+.lki{font-style:normal;width:1.6rem;height:1.6rem;border-radius:.45rem;display:inline-grid;place-items:center;font-size:.8rem;font-weight:700;flex:none;color:var(--c);background:color-mix(in srgb,var(--c) 16%,transparent)}
+.chip .lki,.mdd .lki,.lkres .lki{width:1.25rem;height:1.25rem;font-size:.7rem;margin-right:.2rem}
+.lkadd{display:inline-flex;align-items:center;gap:.3rem;border:1px dashed var(--line2);border-radius:.6rem;padding:.35rem .7rem;background:none;color:var(--acc);font-weight:600;font-size:.86rem;cursor:pointer}
+.lkadd .ic{width:.9rem;height:.9rem}
+.lkhint{font-size:.78rem}
+.lksub{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin-top:.5rem;font-size:.82rem;color:var(--mute)}
+.lksub .chip.bad{opacity:.5;text-decoration:line-through}
+.lkback{margin-top:.7rem;padding-top:.55rem;border-top:1px dashed var(--line)}
+.lkback>span{display:block;color:var(--mute);font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:.35rem}
+.lkrow.back .lkgo{color:var(--mute)}.lkrow.back .lkgo .ic{width:.9rem;height:.9rem}
+.lkrow.back:hover{border-color:var(--acc)}
+.lkflash{animation:lkfl 1.8s ease}
+@keyframes lkfl{0%,60%{background:color-mix(in srgb,var(--mid) 40%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--mid) 45%,transparent)}}
+.mref{color:var(--acc);background:color-mix(in srgb,var(--acc) 12%,transparent);border-radius:.3rem;padding:0 .25rem;font-weight:600;cursor:pointer;text-decoration:none;white-space:normal}
+.mref.k-task{color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent)}
+.mref.k-note{color:var(--mid);background:color-mix(in srgb,var(--mid) 12%,transparent)}
+.mref.k-proj{color:#EC4899;background:color-mix(in srgb,#EC4899 12%,transparent)}
+.mref.auto{background:none;font-weight:inherit;border-bottom:1px dashed currentColor;border-radius:0;padding:0}
+.mref.bad{color:var(--mute);text-decoration:line-through;background:none}
+.mref:hover{filter:brightness(1.2)}
+.mdd{position:fixed;z-index:120;background:var(--card);border:1px solid var(--line2);border-radius:.8rem;padding:.3rem;box-shadow:0 18px 40px rgba(0,0,0,.45);max-height:20rem;overflow:auto}
+.mddh{font-size:.74rem;color:var(--mute);padding:.2rem .4rem .3rem}
+.mdd button{display:flex;align-items:center;gap:.45rem;width:100%;text-align:left;border:0;background:none;color:var(--tx);padding:.4rem .45rem;border-radius:.5rem;cursor:pointer;font:inherit}
+.mdd button span{min-width:0}.mdd button b{display:block;font-size:.86rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mdd button small{display:block;font-size:.74rem;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mdd button.on,.mdd button:hover{background:color-mix(in srgb,var(--acc) 16%,transparent)}
+.lkres{display:flex!important;align-items:center;gap:.5rem}
+.lkres span{min-width:0}.lkres span small{display:block}
+.lktabs{margin:.2rem 0 .4rem}
+.nlinks{margin-top:1.5rem;border-top:1px solid var(--line);padding-top:.8rem;font-family:Inter,system-ui,sans-serif}
+.plinks .lkw{margin:0}
+.rlinks{display:flex;flex-wrap:wrap;gap:.35rem;align-items:center;margin:.35rem 0 .6rem;font-family:Inter,system-ui,sans-serif;font-size:.82rem}
+.rlinks .chip{font-size:.8rem}
+.rlc{display:inline-flex;align-items:center;gap:.2rem;color:var(--acc);font-weight:700}.rlc .ic{width:.9rem;height:.9rem}
+.rlb{display:inline-flex;align-items:center;gap:.1rem;color:var(--acc);font-size:.72rem;font-weight:700;margin-right:.3rem;flex:none}.rlb .ic{width:.75rem;height:.75rem}

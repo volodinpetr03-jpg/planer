@@ -17,7 +17,7 @@ function mergeList(a, b) {
 }
 const linkify = s => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>').replace(/\n/g, '<br>');
 function cmItem(c) {
-  return `<div class="cm" style="--c:${colorC(c.by)}"><span class="who">${esc(initials(nameC(c.by)))}</span><div class="cmb"><div class="cmh"><b>${esc(nameC(c.by))}</b><small>${fmtTs(c.at)}${c.ed ? ' · изменено' : ''}</small>${isMeC(c.by) ? `<button type="button" class="ib sm" data-act="cmDel" data-id="${c.id}" title="Удалить комментарий" aria-label="Удалить комментарий">${ic('x')}</button>` : ''}</div><div class="cmt">${linkify(c.text)}</div></div></div>`;
+  return `<div class="cm" data-cid="${c.id}" style="--c:${colorC(c.by)}"><span class="who">${esc(initials(nameC(c.by)))}</span><div class="cmb"><div class="cmh"><b>${esc(nameC(c.by))}</b><small>${fmtTs(c.at)}${c.ed ? ' · изменено' : ''}</small>${isMeC(c.by) ? `<button type="button" class="ib sm" data-act="cmDel" data-id="${c.id}" title="Удалить комментарий" aria-label="Удалить комментарий">${ic('x')}</button>` : ''}</div><div class="cmt">${typeof refsHtml === 'function' ? refsHtml(c.text, c.ment, linkify) : linkify(c.text)}</div></div></div>`;
 }
 const HF_L = { title: 'название', date: 'срок', time: 'время', who: 'исполнитель', done: 'статус', prio: 'приоритет', colName: 'колонку', desc: 'описание', project: 'проект', dur: 'длительность' };
 function histVal(f, v) {

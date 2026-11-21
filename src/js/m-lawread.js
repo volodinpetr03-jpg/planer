@@ -22,13 +22,15 @@ function lrNodeLab(t) {
   return m ? `<em>${esc((m[1] + ' ' + m[2]).trim())}</em> ${esc(sentCase(m[3] || ''))}` : esc(sentCase(t));
 }
 function lrTocHtml(d) {
-  const L = lawArts(d.id), tree = lawTree(L), many = L.length > 80, subs = new Map();
+  const L = lawArts(d.id), tree = lawTree(L), many = L.length > 80, subs = new Map(), lc = new Map();
+  if (typeof linkIndex === 'function') { const seen = new Set(); linkIndex().forEach(e => { if (e.to.k === 'law' && e.to.doc === d.id && rinfo(e.from)) { const k = e.to.art + '|' + rkey(e.from); if (!seen.has(k)) { seen.add(k); lc.set(e.to.art, (lc.get(e.to.art) || 0) + 1); } } }); }
+  const lb = id => lc.get(id) ? `<small class="rlb" title="Связей: ${lc.get(id)}">${ic('lnk')}${lc.get(id)}</small>` : '';
   L.forEach(a => { if (a.k === 's' && a.par) { if (!subs.has(a.par)) subs.set(a.par, []); subs.get(a.par).push(a); } });
   const first = path => { const a = L.find(x => x.ch === path || (x.ch || '').startsWith(path + ' › ')); return a ? a.id : ''; };
   const item = a => {
     const ss = subs.get(a.id) || [], k = d.id + '#' + a.id, open = LF.open[k] === undefined ? !many : !!LF.open[k];
-    return `<div class="ri ${ss.length ? 'has' : ''} ${open ? 'open' : ''}" data-ra="${a.id}" data-tk="${esc(k)}"><div class="rih">${ss.length ? `<button class="rnc" data-act="lrTog" data-k="${esc(k)}" aria-label="Подпункты">${ic('caret')}</button>` : '<i class="rnc0"></i>'}<button class="rnl" data-act="lrGo" data-art="${a.id}">${lrItemLab(d, a)}</button>${markOf(d.id, a.id) ? ic('bookmark') : ''}</div>
-      ${ss.length ? `<div class="rnb">${ss.map(x => `<div class="ri" data-ra="${x.id}"><div class="rih"><i class="rnc0"></i><button class="rnl" data-act="lrGo" data-art="${x.id}">${lrItemLab(d, x)}</button>${markOf(d.id, x.id) ? ic('bookmark') : ''}</div></div>`).join('')}</div>` : ''}</div>`;
+    return `<div class="ri ${ss.length ? 'has' : ''} ${open ? 'open' : ''}" data-ra="${a.id}" data-tk="${esc(k)}"><div class="rih">${ss.length ? `<button class="rnc" data-act="lrTog" data-k="${esc(k)}" aria-label="Подпункты">${ic('caret')}</button>` : '<i class="rnc0"></i>'}<button class="rnl" data-act="lrGo" data-art="${a.id}">${lrItemLab(d, a)}</button>${lb(a.id)}${markOf(d.id, a.id) ? ic('bookmark') : ''}</div>
+      ${ss.length ? `<div class="rnb">${ss.map(x => `<div class="ri" data-ra="${x.id}"><div class="rih"><i class="rnc0"></i><button class="rnl" data-act="lrGo" data-art="${x.id}">${lrItemLab(d, x)}</button>${lb(x.id)}${markOf(d.id, x.id) ? ic('bookmark') : ''}</div></div>`).join('')}</div>` : ''}</div>`;
   };
   const node = (n, lvl) => {
     const k = tkOf(d, n.path), st = LF.open[k], open = st === undefined ? (!many || (lvl === 0 && tree.kids.length === 1)) : st;
@@ -40,16 +42,17 @@ function lrTocHtml(d) {
 }
 // --- текст ---
 function lrBlock(d, a, words) {
-  const mk = markOf(d.id, a.id), ts = live().filter(t => (t.laws || []).some(l => l.doc === d.id && l.art === a.id));
+  const mk = markOf(d.id, a.id), back = typeof backOf === 'function' ? backOf({ k: 'law', doc: d.id, art: a.id }) : [], bu = [];
+  back.forEach(e => { if (!bu.some(x => rkey(x.from) === rkey(e.from))) bu.push(e); });
   let body = artBodyHtml(d, a, words);
   if (!a.k && d.unit === 'п') body = body.replace(/^<p class="([^"]*)">/, `<p class="$1"><b class="pn">${esc(a.n)}.</b> `);
-  if (a.k === 'x') body = body.replace(/<p class="([^"]*)">([\s\S]*?)<\/p>/g, (m0, cl, h) => { const t = h.replace(/<[^>]+>/g, ''); return (isCaps(t) && t.length < 400) || /^от\s+\d{1,2}\s/.test(t) || /^[N№]\s*\d/.test(t) ? `<p class="${cl} c">${h}</p>` : m0; });
+  if (a.k === 'x' && !a.st) body = body.replace(/<p class="([^"]*)">([\s\S]*?)<\/p>/g, (m0, cl, h) => { const t = h.replace(/<[^>]+>/g, ''); return (isCaps(t) && t.length < 400) || /^от\s+\d{1,2}\s/.test(t) || /^[N№]\s*\d/.test(t) ? `<p class="${cl} c">${h}</p>` : m0; });
   if (a.k === 's') body = body.replace(/^<p class="([^"]*)">((?:<mark[^>]*>)?)([а-яё]|\d{1,2})\)/, '<p class="$1">$2<b class="pn">$3)</b>');
   const head = !a.k && d.unit !== 'п' ? `<h4 class="rah">Статья ${esc(a.n)}.${a.t ? ' ' + markWords(esc(a.t), words) : ''}</h4>` : '';
-  const tools = a.k === 'x' ? '' : `<div class="rbt"><button class="ib sm ${mk ? 'on' : ''}" data-act="lawMark" data-doc="${d.id}" data-art="${a.id}" title="${mk ? 'Убрать из закладок' : 'В закладки'}">${ic('bookmark')}</button><button class="ib sm" data-act="lawTask" data-doc="${d.id}" data-art="${a.id}" title="Привязать к задаче">${ic('link')}</button><button class="ib sm" data-act="lawCopy" data-doc="${d.id}" data-art="${a.id}" title="Копировать с указанием документа">${ic('copy')}</button></div>`;
+  const tools = a.k === 'x' ? '' : `<div class="rbt"><button class="ib sm ${mk ? 'on' : ''}" data-act="lawMark" data-doc="${d.id}" data-art="${a.id}" title="${mk ? 'Убрать из закладок' : 'В закладки'}">${ic('bookmark')}</button><button class="ib sm" data-act="lnkLaw" data-doc="${d.id}" data-art="${a.id}" title="Связать с задачей, заметкой или проектом">${ic('link')}</button><button class="ib sm" data-act="lawCopy" data-doc="${d.id}" data-art="${a.id}" title="Копировать с указанием документа">${ic('copy')}</button></div>`;
   return `<section class="rb k${a.k || 'a'} ${a.st ? 'stamp' : ''} ${LF.art === a.id ? 'tgt' : ''} ${mk ? 'marked' : ''}" id="ra-${a.id}" data-ra="${a.id}">${tools}${head}${body}
     ${mk ? `<div class="lmk"><textarea class="in" data-lnote="${mk.id}" rows="2" placeholder="Заметка к закладке: когда применять, на что обратить внимание">${esc(mk.note || '')}</textarea></div>` : ''}
-    ${ts.length ? `<div class="ltasks"><span>${ic('list')} Задачи:</span>${ts.map(t => `<button class="chip" data-act="openTask" data-id="${t.id}">${esc(t.title)}</button>`).join('')}</div>` : ''}</section>`;
+    ${bu.length ? `<div class="rlinks"><span class="rlc" title="Связи">${ic('lnk')} ${bu.length}</span>${bu.map(e => { const inf = rinfo(e.from); return `<button class="chip lkc k-${e.from.k}" ${eAttr(e)} title="${esc(inf.label)} — ${fWhere(e)}. Перейти к месту ссылки">${rIcon(e.from)}${esc(inf.title.slice(0, 60))}</button>`; }).join('')}<button class="chip" data-act="lnkLaw" data-doc="${d.id}" data-art="${a.id}">${ic('plus')} Связь</button></div>` : ''}</section>`;
 }
 function lrBlocks(d, from, to) {
   const L = lawArts(d.id), out = [];
