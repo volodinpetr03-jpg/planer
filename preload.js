@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('api', {
     disable: pw => ipcRenderer.invoke('lock:disable', pw),
     lockUi: () => ipcRenderer.send('lock:ui')
   },
+  ai: req => ipcRenderer.invoke('ai-chat', req),
+  docPdf: o => ipcRenderer.invoke('doc-pdf', o),
+  docSave: o => ipcRenderer.invoke('doc-save', o),
   files: {
     pick: () => ipcRenderer.invoke('files:pick'),
     setRoot: p => ipcRenderer.invoke('files:setRoot', p),

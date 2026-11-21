@@ -395,6 +395,7 @@ function startApp(d) {
       if (document.body.classList.contains('sideopen')) return sideOpen(false);
       if (document.body.classList.contains('msearch')) return ACT.mSearch();
       if (modalOpen()) { if (UI.form && (UI.form.pk === 'afterRecovery' || UI.form.kind === 'code')) return; return closeModal(); }
+      if (UI.view === 'law' && LF.mode && LF.mode !== 'lib') { LF.mode = 'lib'; return render(); }
       if (UI.view === 'law' && (LF.art || LF.doc || LF.q)) { if (LF.art) LF.art = null; else { LF.doc = null; LF.q = ''; } return render(); }
       const home = D.settings.startView || 'dashboard';
       if (UI.view !== home && modOn(home)) return go(home);

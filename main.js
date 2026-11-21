@@ -316,6 +316,41 @@ ipcMain.handle('data:import', async () => {
 ipcMain.on('app:titlebar', (e, o) => { try { if (win && win.setTitleBarOverlay) win.setTitleBarOverlay({ color: o.color, symbolColor: o.symbol, height: Math.round(48 * (o.zoom || 1)) }); if (win) win.setBackgroundColor(o.color); } catch (err) {} });
 ipcMain.on('app:quit', () => { quitting = true; app.quit(); });
 
+// ---------- Помощник: YandexGPT (Yandex AI Studio, OpenAI-совместимый API). Адрес фиксирован ----------
+const AI_URL = 'https://llm.api.cloud.yandex.net/v1/chat/completions';
+ipcMain.handle('ai-chat', async (event, req) => {
+  const key = String((req && req.key) || '').trim(), folder = String((req && req.folder) || '').trim(), model = String((req && req.model) || '');
+  const messages = Array.isArray(req && req.messages) ? req.messages : [];
+  if (!/^[A-Za-z0-9_\-.]{20,300}$/.test(key) || !/^[a-z0-9]{10,40}$/.test(folder)) return { status: 401, text: '{"error":{"message":"нет ключа или каталога"}}' };
+  if (!/^gpt:\/\/[a-z0-9]{10,40}\/[a-z0-9][a-z0-9.\-_/@]{1,80}$/i.test(model)) return { status: 400, text: '{"error":{"message":"неверное название модели"}}' };
+  if (!messages.length || messages.length > 20 || messages.some(m => !m || !['system', 'user', 'assistant'].includes(m.role) || typeof m.content !== 'string')) return { status: 400, text: '{"error":{"message":"неверный запрос"}}' };
+  if (messages.reduce((s, m) => s + m.content.length, 0) > 120000) return { status: 400, text: '{"error":{"message":"слишком длинный запрос"}}' };
+  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 120000);
+  try {
+    const res = await fetch(AI_URL, { method: 'POST', signal: ctrl.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key, 'OpenAI-Project': folder, 'x-data-logging-enabled': 'false', 'User-Agent': `Planer/${app.getVersion()}` },
+      body: JSON.stringify({ model, messages, temperature: Math.min(1, Math.max(0, Number(req.temperature) || 0.2)), max_tokens: Math.min(4000, Math.max(50, Number(req.maxTokens) || 1500)) }) });
+    return { status: res.status, text: (await res.text()).slice(0, 200000) };
+  } catch (e) { return { status: 0, text: '', error: e.name === 'AbortError' ? 'timeout' : (e.cause && e.cause.code) || e.message }; }
+  finally { clearTimeout(timer); }
+});
+// печать документа (Windows: «Microsoft Print to PDF» сохраняет в PDF)
+ipcMain.handle('doc-pdf', async (event, o) => {
+  const w = new BrowserWindow({ show: false, webPreferences: { sandbox: true, javascript: false } });
+  try {
+    await w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(String(o && o.html || '')));
+    const pdf = await w.webContents.printToPDF({ pageSize: 'A4', printBackground: false, margins: { marginType: 'none' } });
+    const r = await dialog.showSaveDialog(win, { title: 'Сохранить PDF', defaultPath: path.join(app.getPath('documents'), String(o.name || 'Документ').replace(/[\\/:*?"<>|]+/g, '_') + '.pdf'), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+    if (r.canceled || !r.filePath) return null;
+    fs.writeFileSync(r.filePath, pdf); return r.filePath;
+  } finally { w.destroy(); }
+});
+ipcMain.handle('doc-save', async (event, o) => {
+  const ext = String(o.ext || 'docx'), r = await dialog.showSaveDialog(win, { title: 'Сохранить документ', defaultPath: path.join(app.getPath('documents'), String(o.name || 'Документ').replace(/[\\/:*?"<>|]+/g, '_') + '.' + ext), filters: [{ name: ext === 'docx' ? 'Документ Word' : ext, extensions: [ext] }] });
+  if (r.canceled || !r.filePath) return null;
+  fs.writeFileSync(r.filePath, Buffer.from(o.b64, 'base64')); return r.filePath;
+});
+
 // ---------- Общая папка для совместных проектов (Google Диск для компьютера) ----------
 let shareRoot = null;
 const inRoot = p => { if (!shareRoot) return false; const r = path.resolve(shareRoot), x = path.resolve(p); return x === r || x.startsWith(r + path.sep); };

@@ -9,7 +9,7 @@
   const C = window.Capacitor, X = window.capacitorExports;
   if (!C || !X || !C.isNativePlatform || !C.isNativePlatform()) return;
 
-  const reg = n => X.registerPlugin(n);
+  const reg = n => X.registerPlugin(n), Http = X.CapacitorHttp;
   const FS = reg('Filesystem'), Notif = reg('LocalNotifications'), Share = reg('Share'), AppP = reg('App'), PF = reg('PlanerFiles');
   const DIR = 'DATA', DATA_FILE = 'planer-data.json', LOCK_FILE = 'planer-lock.json', LOG_FILE = 'planer-log.txt', BK = 'backups';
   const listeners = {};
@@ -288,6 +288,20 @@
         return { ok: true };
       },
       lockUi: () => { readLock().then(L => { if (L) uiLocked = true; }); }
+    },
+    ai: async req => {
+      try {
+        const r = await Http.request({ url: 'https://llm.api.cloud.yandex.net/v1/chat/completions', method: 'POST', responseType: 'text', connectTimeout: 30000, readTimeout: 120000,
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + String(req.key || '').trim(), 'OpenAI-Project': String(req.folder || '').trim(), 'x-data-logging-enabled': 'false' },
+          data: { model: req.model, messages: req.messages, temperature: req.temperature, max_tokens: req.maxTokens } });
+        return { status: r.status, text: typeof r.data === 'string' ? r.data : JSON.stringify(r.data) };
+      } catch (e) { return { status: 0, text: '', error: /timeout/i.test(String(e && e.message)) ? 'timeout' : String((e && e.message) || e) }; }
+    },
+    docSave: async o => {
+      const path = String(o.name || 'Документ').replace(/[\\/:*?"<>|]+/g, '_') + '.' + (o.ext || 'docx');
+      const w = await FS.writeFile({ path, data: o.b64, directory: 'CACHE' });
+      try { await Share.share({ title: path, files: [w.uri], dialogTitle: 'Сохранить или отправить' }); return path; }
+      catch (e) { if (/cancel/i.test(String(e && e.message))) return null; throw e; }
     },
     // общая папка для совместных проектов (папка, которую синхронизирует FolderSync с Google Диском)
     files: {

@@ -2,7 +2,7 @@
 // ============================================================
 //  Настройки: внешний вид, модули, колонки, теги, бюджет, данные
 // ============================================================
-const STABS = [['look', 'Внешний вид', 'palette'], ['security', 'Безопасность', 'shield'], ['share', 'Совместная работа', 'users'], ['smart', 'Умные функции', 'spark'], ['modules', 'Модули', 'puzzle'], ['cols', 'Колонки', 'board'], ['tags', 'Теги', 'tag'], ['money', 'Бюджет', 'wallet'], ['general', 'Общие', 'gear'], ['data', 'Данные', 'data'], ['archive', 'Архив', 'archive'], ['keys', 'Клавиши', 'list']];
+const STABS = [['look', 'Внешний вид', 'palette'], ['security', 'Безопасность', 'shield'], ['share', 'Совместная работа', 'users'], ['ai', 'Помощник', 'spark'], ['smart', 'Умные функции', 'spark'], ['modules', 'Модули', 'puzzle'], ['cols', 'Колонки', 'board'], ['tags', 'Теги', 'tag'], ['money', 'Бюджет', 'wallet'], ['general', 'Общие', 'gear'], ['data', 'Данные', 'data'], ['archive', 'Архив', 'archive'], ['keys', 'Клавиши', 'list']];
 const CURRENCIES = [['₽', 'Рубль ₽'], ['$', 'Доллар $'], ['€', 'Евро €'], ['₸', 'Тенге ₸'], ['Br', 'Белорусский рубль Br'], ['₴', 'Гривна ₴'], ['¥', 'Юань ¥'], ['£', 'Фунт £'], ['₺', 'Лира ₺'], ['сум', 'Сум']];
 function openSettings(tab) {
   UI.settab = tab || 'look';
@@ -23,6 +23,8 @@ async function drawSettings() {
       <div class="sline"><div class="tx"><b>Масштаб интерфейса</b><span>Как увеличение в браузере. Горячие клавиши: <kbd>Ctrl</kbd> <kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></span></div><div class="ctl w"><div class="rng"><input type="range" id="s-zoom" min="70" max="160" step="5" value="${Math.round(S.zoom * 100)}"><output id="o-zoom">${Math.round(S.zoom * 100)}%</output></div></div></div>
       <div class="sline"><div class="tx"><b>Компактное боковое меню</b><span>Только значки — больше места для доски и календаря</span></div><input type="checkbox" class="tog" id="s-coll" ${S.collapsed ? 'checked' : ''}></div>
       <div><button class="btn ghost" data-act="lookReset">Вернуть оформление по умолчанию</button></div>`;
+  } else if (tab === 'ai') {
+    h = await aiSettingsTab(); if (UI.settab !== 'ai') return;
   } else if (tab === 'share') {
     h = await shareTab(); if (UI.settab !== 'share') return;
   } else if (tab === 'security') {
@@ -116,7 +118,7 @@ Object.assign(ACT, {
   tagDel: b => { snapU(); const id = b.dataset.id; D.tags = D.tags.filter(t => t.id !== id); D.tasks.forEach(t => t.tags = (t.tags || []).filter(x => x !== id)); B().tx.forEach(t => t.tags = (t.tags || []).filter(x => x !== id)); TF.tags.delete(id); save(); drawSettings(); render(); toast('Тег удалён', true); },
   quit: () => window.api.quit(), folder: () => window.api.openFolder(),
   askNotif: async () => { await window.api.askNotif(); drawSettings(); }, askExact: async () => { await window.api.askExactAlarms(); setTimeout(drawSettings, 1500); },
-  exportAll: async () => { const d = new Date(); let o = D; if (LW().docs.length) { await lawLoad(); o = { ...D, lawTexts: LW().docs.map(x => ({ id: x.id, arts: lawArts(x.id) })) }; } saveFile(JSON.stringify(o, null, 1), `Планер-копия-${ymd(d)}`, 'json'); if (LK.status.enabled) setTimeout(() => toast('Внимание: копия в файле не зашифрована — храните её в надёжном месте'), 1500); },
+  exportAll: async () => { const d = new Date(); let o = D; if (LW().docs.length) { await lawLoad(); o = { ...D, lawTexts: LW().docs.map(x => ({ id: x.id, arts: lawArts(x.id) })) }; } if (D.ai && D.ai.key) o = { ...o, ai: { ...D.ai, key: '' } }; saveFile(JSON.stringify(o, null, 1), `Планер-копия-${ymd(d)}`, 'json'); if (LK.status.enabled) setTimeout(() => toast('Внимание: копия в файле не зашифрована — храните её в надёжном месте'), 1500); },
   importAll: async () => { if (hasApi) { const txt = await window.api.importData(); if (txt) importText(txt); } else $('#s-file').click(); },
   exportCsv: b => {
     let rows;
