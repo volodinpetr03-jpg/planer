@@ -401,14 +401,24 @@
       try { await Share.share({ title: path, files: [w.uri], dialogTitle: 'Сохранить или отправить' }); return path; }
       catch (e) { if (/cancel/i.test(String(e && e.message))) return null; throw e; }
     },
-    // общая папка для совместных проектов (папка, которую синхронизирует FolderSync с Google Диском)
-    files: {
-      hasAccess: async () => { try { return !!(await PF.hasAccess()).granted; } catch (e) { return false; } },
-      askAccess: async () => { try { await PF.askAccess(); } catch (e) {} },
-      list: async dir => { try { return (await FS.readdir({ path: dir, directory: 'EXTERNAL_STORAGE' })).files.map(f => ({ name: f.name, mtime: +f.mtime || 0, size: f.size || 0, type: f.type })); } catch (e) { return null; } },
-      read: async p => readText(p, 'EXTERNAL_STORAGE'),
-      write: async (p, content) => { await FS.writeFile({ path: p, data: content, directory: 'EXTERNAL_STORAGE', encoding: 'utf8', recursive: true }); return true; },
-      mkdir: async p => { try { await FS.mkdir({ path: p, directory: 'EXTERNAL_STORAGE', recursive: true }); } catch (e) {} return true; }
+    // совместные проекты: Яндекс Диск (REST API) и вход в Яндекс по коду; адреса фиксированы
+    ydisk: async req => {
+      req = req || {};
+      const ydHost = u => { try { const h = new URL(u).hostname; return /(^|\.)yandex\.(ru|net|com)$/.test(h) || /(^|\.)yastatic\.net$/.test(h); } catch (e) { return false; } };
+      const call = async o => { try { const r = await Http.request(Object.assign({ connectTimeout: 30000, readTimeout: 90000, responseType: 'text' }, o)); return { status: r.status, text: typeof r.data === 'string' ? r.data : JSON.stringify(r.data) }; } catch (e) { return { status: 0, text: '', error: String((e && e.message) || e) }; } };
+      const form = o => Object.entries(o).filter(([, v]) => v != null && v !== '').map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+      if (req.op === 'devcode') return call({ url: 'https://oauth.yandex.ru/device/code', method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, data: form({ client_id: req.client, device_id: req.device, device_name: req.deviceName }) });
+      if (req.op === 'devtoken') return call({ url: 'https://oauth.yandex.ru/token', method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, data: form({ grant_type: 'device_code', code: req.code, client_id: req.client, client_secret: req.secret }) });
+      const token = String(req.token || '').trim(); if (!/^[A-Za-z0-9_\-.]{20,400}$/.test(token)) return { status: 401, text: '{"error":"нет токена"}' };
+      const auth = { Authorization: 'OAuth ' + token, Accept: 'application/json' }, API = 'https://cloud-api.yandex.net/v1/disk';
+      if (req.op === 'info') return call({ url: API + '/', headers: auth });
+      const path = String(req.path || ''); if (!/^disk:\//.test(path) || /(^|\/)\.\.(\/|$)/.test(path)) return { status: 400, text: '{"error":"недопустимый путь"}' };
+      const p = encodeURIComponent(path);
+      if (req.op === 'list') return call({ url: `${API}/resources?path=${p}&limit=1000&fields=name,type,_embedded.items.name,_embedded.items.type,_embedded.items.modified,_embedded.items.size,_embedded.items.share`, headers: auth });
+      if (req.op === 'mkdir') return call({ url: `${API}/resources?path=${p}`, method: 'PUT', headers: auth });
+      if (req.op === 'read') { const m = await call({ url: `${API}/resources/download?path=${p}`, headers: auth }); if (m.status !== 200) return m; const href = JSON.parse(m.text).href; if (!ydHost(href)) return { status: 0, error: 'неожиданный адрес' }; return call({ url: href }); }
+      if (req.op === 'write') { const m = await call({ url: `${API}/resources/upload?path=${p}&overwrite=true`, headers: auth }); if (m.status !== 200) return m; const href = JSON.parse(m.text).href; if (!ydHost(href)) return { status: 0, error: 'неожиданный адрес' }; return call({ url: href, method: 'PUT', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, data: String(req.body || '') }); }
+      return { status: 400, text: '{"error":"неизвестная операция"}' };
     },
     on: (ch, fn) => { (listeners[ch] = listeners[ch] || []).push(fn); }
   };

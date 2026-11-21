@@ -433,27 +433,52 @@ ipcMain.handle('doc-save', async (event, o) => {
   fs.writeFileSync(r.filePath, Buffer.from(o.b64, 'base64')); return r.filePath;
 });
 
-// ---------- Общая папка для совместных проектов (Google Диск для компьютера) ----------
-let shareRoot = null;
-const inRoot = p => { if (!shareRoot) return false; const r = path.resolve(shareRoot), x = path.resolve(p); return x === r || x.startsWith(r + path.sep); };
-ipcMain.handle('files:pick', async () => {
-  const r = await dialog.showOpenDialog(win, { title: 'Общая папка для совместных проектов', properties: ['openDirectory', 'createDirectory'] });
-  if (r.canceled || !r.filePaths[0]) return null; shareRoot = r.filePaths[0]; return shareRoot;
+// ---------- Совместные проекты: Яндекс Диск (REST API) и вход в Яндекс по коду ----------
+// Адреса фиксированы; токен уходит только на домены Яндекса; перенаправления проверяем сами.
+const YD_API = 'https://cloud-api.yandex.net/v1/disk';
+const ydHost = u => { try { const h = new URL(u).hostname; return /(^|\.)yandex\.(ru|net|com)$/.test(h) || /(^|\.)yandex-team\.ru$/.test(h) || /(^|\.)yastatic\.net$/.test(h); } catch (e) { return false; } };
+const ydPath = p => { p = String(p || ''); if (!/^disk:\/[^\0]*$/.test(p) || /(^|\/)\.\.(\/|$)/.test(p) || p.length > 400) throw new Error('недопустимый путь'); return p; };
+async function ydFetch(url, opts, ms) {
+  const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), ms || 60000);
+  let u = url, o = Object.assign({ signal: ctrl.signal, redirect: 'manual' }, opts);
+  try {
+    for (let hop = 0; ; hop++) {
+      const r = await fetch(u, o), loc = r.headers.get('location');
+      if (![301, 302, 303, 307, 308].includes(r.status) || !loc) return { status: r.status, text: (await r.text()).slice(0, 30000000) };
+      if (hop >= 4) throw new Error('слишком много перенаправлений');
+      const next = new URL(loc, u).href; if (!ydHost(next)) throw new Error('неожиданное перенаправление');
+      if (new URL(next).origin !== new URL(u).origin && o.headers) { const h = Object.assign({}, o.headers); delete h.Authorization; o = Object.assign({}, o, { headers: h }); }
+      if (r.status === 303) o = Object.assign({}, o, { method: 'GET', body: undefined });
+      u = next;
+    }
+  } catch (e) { return { status: 0, text: '', error: e.name === 'AbortError' ? 'timeout' : (e.cause && e.cause.code) || e.message }; }
+  finally { clearTimeout(timer); }
+}
+ipcMain.handle('ydisk', async (event, req) => {
+  req = req || {};
+  const ua = `Planer/${app.getVersion()}`, form = o => Object.entries(o).filter(([, v]) => v != null && v !== '').map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+  try {
+    if (req.op === 'devcode') return ydFetch('https://oauth.yandex.ru/device/code', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': ua }, body: form({ client_id: req.client, device_id: req.device, device_name: req.deviceName }) });
+    if (req.op === 'devtoken') return ydFetch('https://oauth.yandex.ru/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': ua }, body: form({ grant_type: 'device_code', code: req.code, client_id: req.client, client_secret: req.secret }) });
+    const token = String(req.token || '').trim(); if (!/^[A-Za-z0-9_\-.]{20,400}$/.test(token)) return { status: 401, text: '{"error":"нет токена"}' };
+    const auth = { Authorization: 'OAuth ' + token, Accept: 'application/json', 'User-Agent': ua };
+    if (req.op === 'info') return ydFetch(YD_API + '/', { headers: auth });
+    const p = encodeURIComponent(ydPath(req.path));
+    if (req.op === 'list') return ydFetch(`${YD_API}/resources?path=${p}&limit=1000&fields=name,type,_embedded.items.name,_embedded.items.type,_embedded.items.modified,_embedded.items.size,_embedded.items.share`, { headers: auth });
+    if (req.op === 'mkdir') return ydFetch(`${YD_API}/resources?path=${p}`, { method: 'PUT', headers: auth });
+    if (req.op === 'read') {
+      const m = await ydFetch(`${YD_API}/resources/download?path=${p}`, { headers: auth }); if (m.status !== 200) return m;
+      const href = JSON.parse(m.text).href; if (!ydHost(href)) return { status: 0, error: 'неожиданный адрес скачивания' };
+      return ydFetch(href, { headers: { 'User-Agent': ua } }, 90000);
+    }
+    if (req.op === 'write') {
+      const m = await ydFetch(`${YD_API}/resources/upload?path=${p}&overwrite=true`, { headers: auth }); if (m.status !== 200) return m;
+      const href = JSON.parse(m.text).href; if (!ydHost(href)) return { status: 0, error: 'неожиданный адрес загрузки' };
+      return ydFetch(href, { method: 'PUT', headers: { 'User-Agent': ua, 'Content-Type': 'application/octet-stream' }, body: Buffer.from(String(req.body || ''), 'utf8') }, 90000);
+    }
+    return { status: 400, text: '{"error":"неизвестная операция"}' };
+  } catch (e) { return { status: 0, text: '', error: String(e && e.message || e) }; }
 });
-ipcMain.handle('files:setRoot', (e, p) => { try { if (p && fs.statSync(p).isDirectory()) { shareRoot = p; return true; } } catch (err) {} return false; });
-ipcMain.handle('files:list', (e, dir) => {
-  if (!inRoot(dir)) return null;
-  try { return fs.readdirSync(dir).map(name => { try { const st = fs.statSync(path.join(dir, name)); return { name, mtime: st.mtimeMs, size: st.size, type: st.isDirectory() ? 'directory' : 'file' }; } catch (err) { return null; } }).filter(Boolean); } catch (err) { return null; }
-});
-ipcMain.handle('files:read', (e, f) => { if (!inRoot(f)) return null; try { return fs.readFileSync(f, 'utf8'); } catch (err) { return null; } });
-ipcMain.handle('files:write', (e, f, content) => {
-  if (!inRoot(f)) throw new Error('путь вне общей папки');
-  fs.mkdirSync(path.dirname(f), { recursive: true });
-  const tmp = path.join(path.dirname(f), '.~' + path.basename(f) + '.tmp');
-  try { fs.writeFileSync(tmp, content); fs.renameSync(tmp, f); } catch (err) { try { fs.unlinkSync(tmp); } catch (e2) {} fs.writeFileSync(f, content); }
-  return true;
-});
-ipcMain.handle('files:mkdir', (e, d) => { if (!inRoot(d)) return false; fs.mkdirSync(d, { recursive: true }); return true; });
 
 // ---------- Жизненный цикл ----------
 app.on('second-instance', showWindow);

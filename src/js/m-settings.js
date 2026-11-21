@@ -118,7 +118,7 @@ Object.assign(ACT, {
   tagDel: b => { snapU(); const id = b.dataset.id; D.tags = D.tags.filter(t => t.id !== id); D.tasks.forEach(t => t.tags = (t.tags || []).filter(x => x !== id)); B().tx.forEach(t => t.tags = (t.tags || []).filter(x => x !== id)); TF.tags.delete(id); save(); drawSettings(); render(); toast('Тег удалён', true); },
   quit: () => window.api.quit(), folder: () => window.api.openFolder(),
   askNotif: async () => { await window.api.askNotif(); drawSettings(); }, askExact: async () => { await window.api.askExactAlarms(); setTimeout(drawSettings, 1500); },
-  exportAll: async () => { const d = new Date(); let o = D; if (LW().docs.length) { await lawLoad(); o = { ...D, lawTexts: LW().docs.map(x => ({ id: x.id, arts: lawArts(x.id) })) }; } if (D.ai && D.ai.key) o = { ...o, ai: { ...D.ai, key: '' } }; saveFile(JSON.stringify(o, null, 1), `Планер-копия-${ymd(d)}`, 'json'); if (LK.status.enabled) setTimeout(() => toast('Внимание: копия в файле не зашифрована — храните её в надёжном месте'), 1500); },
+  exportAll: async () => { const d = new Date(); let o = D; if (LW().docs.length) { await lawLoad(); o = { ...D, lawTexts: LW().docs.map(x => ({ id: x.id, arts: lawArts(x.id) })) }; } if (D.ai && D.ai.key) o = { ...o, ai: { ...D.ai, key: '' } }; if (D.share && D.share.token) o = { ...o, share: { ...D.share, token: '', key: '' } }; saveFile(JSON.stringify(o, null, 1), `Планер-копия-${ymd(d)}`, 'json'); if (LK.status.enabled) setTimeout(() => toast('Внимание: копия в файле не зашифрована — храните её в надёжном месте'), 1500); },
   importAll: async () => { if (hasApi) { const txt = await window.api.importData(); if (txt) importText(txt); } else $('#s-file').click(); },
   exportCsv: b => {
     let rows;

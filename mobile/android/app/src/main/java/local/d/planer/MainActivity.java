@@ -8,7 +8,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        // свой модуль: доступ к общей папке для совместных проектов и данные для виджета «Сегодня»
+        // свой модуль: данные для виджета «Сегодня»
         registerPlugin(PlanerFilesPlugin.class);
         super.onCreate(savedInstanceState);
         markNew(getIntent());

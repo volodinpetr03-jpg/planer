@@ -1,12 +1,12 @@
 'use strict';
 // ============================================================
-//  Совместная работа: общие проекты через общую папку (Google Диск на компьютере,
-//  FolderSync на телефоне). Каждый участник пишет только свой файл members/<id>.json,
+//  Совместная работа: общие проекты через общую папку на Яндекс Диске (REST API, вход по коду —
+//  одинаково на компьютере и телефоне). Каждый участник пишет только свой файл members/<id>.json,
 //  читает файлы остальных и сводит изменения по каждой записи: побеждает более поздняя правка.
 //  Всё содержимое файлов зашифровано паролем пространства (AES-256-GCM, ключ из PBKDF2).
 // ============================================================
 const SH = () => D.share || null;
-const shareOn = () => !!(D && D.share && D.share.folder && D.share.key && D.share.space);
+const shareOn = () => !!(D && D.share && D.share.prov === 'yd' && D.share.token && D.share.folder && D.share.key && D.share.space);
 const isShared = p => !!(p && p.shared && shareOn());
 const memberOf = id => { const s = SH(); if (!s || !id) return null; if (id === s.me.id) return s.me; return (s.members || {})[id] || null; };
 const initials = n => String(n || '?').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -14,13 +14,27 @@ const whoChip = id => { const m = memberOf(id); return m ? `<span class="who" st
 const SPACE_FILE = 'planer-space.json', MDIR = 'members';
 const SHS = { busy: false, dirtyT: null, timer: null, lastSig: '', err: null, last: 0 };
 
-// ---------- файлы общей папки (компьютер — через Electron, телефон — через Android) ----------
+// ---------- файлы общей папки на Яндекс Диске ----------
+const YD_CLIENT = ''; // ClientID приложения «Планер» на oauth.yandex.ru (вшивается в сборку; пока нет — вводится в настройках)
+const ydClient = () => YD_CLIENT || (D.settings.ydClient || '').trim();
+const ydj = r => { try { return JSON.parse((r && r.text) || '{}'); } catch (e) { return {}; } };
+function ydErr(r) {
+  const j = ydj(r), d = j.description || j.message || j.error_description || j.error || (r && r.error) || '';
+  if (!r || r.status === 0) return 'Нет связи с Яндекс Диском' + (d ? ' (' + d + ')' : '') + '. Проверьте интернет.';
+  if (r.status === 401) return 'Яндекс не принял вход — войдите в Яндекс заново (Настройки → Совместная работа).';
+  if (r.status === 403) return 'Яндекс Диск запретил доступ: у приложения нет прав на Диск или папка не открыта вам.';
+  if (r.status === 404) return 'Папка не найдена на Яндекс Диске — возможно, её переименовали или закрыли доступ.';
+  if (r.status === 507) return 'На Яндекс Диске закончилось место (место общее с Яндекс Почтой).';
+  if (r.status === 429) return 'Слишком много запросов к Яндекс Диску — подождите минуту.';
+  return 'Яндекс Диск: ошибка ' + r.status + (d ? ': ' + String(d).slice(0, 140) : '');
+}
+const YD = req => window.api.ydisk(Object.assign({ token: SH().token }, req));
 const FX = {
-  join: rel => SH().folder.replace(/[\\/]+$/, '') + '/' + rel,
-  list: rel => window.api.files.list(FX.join(rel)),
-  read: rel => window.api.files.read(FX.join(rel)),
-  write: (rel, c) => window.api.files.write(FX.join(rel), c),
-  mkdir: rel => window.api.files.mkdir(FX.join(rel))
+  join: rel => SH().folder.replace(/\/+$/, '') + (rel ? '/' + rel : ''),
+  list: async rel => { const r = await YD({ op: 'list', path: FX.join(rel) }); if (r.status === 404) return null; if (r.status !== 200) throw new Error(ydErr(r)); return ((ydj(r)._embedded || {}).items || []).map(x => ({ name: x.name, mtime: Date.parse(x.modified) || 0, size: x.size || 0, type: x.type })); },
+  read: async rel => { const r = await YD({ op: 'read', path: FX.join(rel) }); if (r.status === 404) return null; if (r.status !== 200) throw new Error(ydErr(r)); return r.text; },
+  write: async (rel, c) => { const r = await YD({ op: 'write', path: FX.join(rel), body: c }); if (!(r.status >= 200 && r.status < 300)) throw new Error(ydErr(r)); return true; },
+  mkdir: async rel => { const r = await YD({ op: 'mkdir', path: FX.join(rel) }); if (!(r.status >= 200 && r.status < 300) && r.status !== 409) throw new Error(ydErr(r)); return true; }
 };
 
 // ---------- шифрование ----------
@@ -147,7 +161,7 @@ async function syncNow(force) {
     if (changed && !modalOpen() && !dragId) render(); else if (changed) { drawSide(); if (UI.form && UI.form.t && typeof drawCm === 'function') drawCm(); }
     return true;
   } catch (e) {
-    SHS.err = 'Нет доступа к общей папке: ' + ((e && e.message) || e);
+    SHS.err = String((e && e.message) || e);
     return false;
   } finally {
     SHS.busy = false; UI.syncing = false;
@@ -157,7 +171,6 @@ async function syncNow(force) {
 function shareStart() {
   clearInterval(SHS.timer);
   if (!shareOn()) return;
-  if (window.api.files.setRoot) window.api.files.setRoot(SH().folder);
   SHS.timer = setInterval(() => { if (!document.hidden) syncNow(); }, IS_PHONE ? 30000 : 20000);
   setTimeout(() => syncNow(true), 1500);
 }
@@ -192,21 +205,58 @@ function givenHtml() {
       ${L.sort((a, b) => (isDone(a) ? 1 : 0) - (isDone(b) ? 1 : 0) || (a.date || '9').localeCompare(b.date || '9')).map(t => `<div class="lrow gvr ${isDone(t) ? 'dn' : ''}" data-act="openTask" data-id="${t.id}"><span class="gvs">${isDone(t) ? ic('check') : ''}</span><div class="tx"><b>${esc(t.title)}</b><small>${isDone(t) ? 'выполнено' + (t.doneAt ? ' ' + fmtTs(t.doneAt) : '') : (t.date ? (t.date < today() ? 'просрочено · ' : '') + dueTxt(t) : 'без срока')} · ${esc((colOf(t.col) || {}).title || '')}</small></div></div>`).join('')}</div>`).join('')}</section>`;
 }
 
+// ---------- вход в Яндекс: код на странице ya.ru/device (или токен вручную) ----------
+const YDL = { code: null, timer: null, err: '', folders: null, pick: '', manual: false };
+const devId = () => { let v = ''; try { v = localStorage.getItem('planer-dev-id') || ''; if (!v) { v = uid() + uid(); localStorage.setItem('planer-dev-id', v); } } catch (e) { v = 'planer-' + (IS_PHONE ? 'phone' : 'pc'); } return v; };
+async function ydLoginStart() {
+  const client = ydClient(); if (!client) { YDL.err = 'Сначала укажите ClientID приложения (см. шаг ниже).'; return drawSettings(); }
+  YDL.err = ''; const r = await window.api.ydisk({ op: 'devcode', client, device: devId(), deviceName: IS_PHONE ? 'Планер — телефон' : 'Планер — компьютер' });
+  const j = ydj(r);
+  if (r.status !== 200 || !j.device_code) { YDL.manual = true; YDL.err = j.error === 'invalid_client' ? 'Яндекс не нашёл приложение с таким ClientID — проверьте его.' : 'Вход по коду не сработал (' + (j.error_description || j.error || ydErr(r)) + '). Получите токен на странице Яндекса — кнопка ниже.'; return drawSettings(); }
+  YDL.code = { user: j.user_code, url: j.verification_url || 'https://ya.ru/device', dc: j.device_code, until: Date.now() + (j.expires_in || 300) * 1000, iv: Math.max(3, j.interval || 5) };
+  drawSettings(); openExternal(YDL.code.url); ydPoll();
+}
+function ydPoll() {
+  clearTimeout(YDL.timer); const c = YDL.code; if (!c) return;
+  if (Date.now() > c.until) { YDL.code = null; YDL.err = 'Время на ввод кода вышло — нажмите «Войти через Яндекс» ещё раз.'; return drawSettings(); }
+  YDL.timer = setTimeout(async () => {
+    const r = await window.api.ydisk({ op: 'devtoken', client: ydClient(), code: c.dc }), j = ydj(r);
+    if (r.status === 200 && j.access_token) { YDL.code = null; return ydGotToken(j.access_token); }
+    if (j.error && j.error !== 'authorization_pending') { YDL.code = null; YDL.err = j.error === 'invalid_grant' ? 'Код устарел — попробуйте ещё раз.' : 'Яндекс: ' + (j.error_description || j.error); return drawSettings(); }
+    ydPoll();
+  }, c.iv * 1000);
+}
+async function ydGotToken(token) {
+  const r = await window.api.ydisk({ op: 'info', token }), j = ydj(r);
+  if (r.status !== 200) { YDL.err = ydErr(r); return drawSettings(); }
+  const prev = D.share || {};
+  D.share = { ...(prev.prov === 'yd' ? prev : { me: prev.me }), prov: 'yd', token, login: (j.user && (j.user.display_name || j.user.login)) || 'Яндекс', space: prev.prov === 'yd' ? prev.space : null };
+  if (prev.prov !== 'yd') { delete D.share.folder; delete D.share.key; }
+  YDL.err = ''; YDL.folders = null; save(); toast('Вход в Яндекс выполнен'); drawSettings(); ydFolders();
+}
+async function ydFolders() {
+  const r = await YD({ op: 'list', path: 'disk:/' });
+  if (r.status !== 200) { YDL.err = ydErr(r); YDL.folders = []; return drawSettings(); }
+  YDL.folders = ((ydj(r)._embedded || {}).items || []).filter(x => x.type === 'dir').map(x => ({ name: x.name, shared: !!x.share, own: x.share ? x.share.is_owned !== false : true }))
+    .sort((a, b) => (b.shared - a.shared) || (/план/i.test(b.name) - /план/i.test(a.name)) || a.name.localeCompare(b.name, 'ru'));
+  if (!YDL.pick) { const f = YDL.folders.find(x => /план/i.test(x.name)) || YDL.folders.find(x => x.shared); YDL.pick = f ? f.name : '+new'; }
+  drawSettings();
+}
 // ---------- подключение к пространству ----------
-const SHARE_DEF_PHONE = 'Планер-общий';
 async function shareConnect() {
-  const name = $('#sh-name').value.trim(), pass = $('#sh-pass').value, folder = (IS_PHONE ? $('#sh-folder').value.trim().replace(/^\/+|\/+$/g, '') : UI.shFolder) || '';
+  const name = $('#sh-name').value.trim(), pass = $('#sh-pass').value, newName = ($('#sh-new') || {}).value || '';
+  const pick = YDL.pick === '+new' ? newName.trim().replace(/[\\/:*?"<>|]+/g, ' ').trim() : YDL.pick;
   const msg = t => { $('#sh-err').textContent = t; };
   if (!name) return msg('Введите своё имя — так вас увидят другие участники');
-  if (!folder) return msg(IS_PHONE ? 'Укажите папку' : 'Выберите общую папку');
+  if (!pick) return msg(YDL.pick === '+new' ? 'Введите название новой папки' : 'Выберите папку на Яндекс Диске');
   if (pass.length < 6) return msg('Пароль пространства — не короче 6 символов');
-  if (IS_PHONE && !(await window.api.files.hasAccess())) return msg('Сначала разрешите доступ к файлам — кнопка выше');
   msg('Подключаю…'); $('#sh-go').disabled = true;
+  const prev = D.share;
   try {
-    D.share = D.share && D.share.me ? D.share : {};
-    const tmp = { folder }; const prev = D.share; D.share = { ...prev, folder };
-    if (window.api.files.setRoot) await window.api.files.setRoot(folder);
-    let sp = null; try { sp = JSON.parse((await FX.read(SPACE_FILE)) || 'null'); } catch (e) { sp = null; }
+    const folder = 'disk:/' + pick;
+    D.share = { ...prev, folder };
+    if (YDL.pick === '+new') await FX.mkdir('').catch(() => {});
+    let sp = null; try { sp = JSON.parse((await FX.read(SPACE_FILE)) || 'null'); } catch (e) { if (/Нет связи|не принял|запретил|место/.test(e.message)) throw e; sp = null; }
     let key;
     if (sp && sp.planerSpace) {
       key = await spaceKey(pass, sp.salt);
@@ -219,51 +269,92 @@ async function shareConnect() {
     }
     const me = (prev && prev.me) || { id: uid(), color: COLORS[Math.floor(Math.random() * COLORS.length)] };
     me.name = name;
-    D.share = { folder, key, space: { id: sp.id, name: sp.name }, me, members: {}, base: {}, meta: {}, tombs: {}, last: 0 };
-    void tmp;
+    D.share = { prov: 'yd', token: prev.token, login: prev.login, folder, key, space: { id: sp.id, name: sp.name }, me, members: {}, base: {}, meta: {}, tombs: {}, last: 0, remMine: prev.remMine };
     save(); shareStart(); await syncNow(true);
     toast('Подключено. Отметьте проект как «Общий» — он появится у остальных участников');
     drawSettings(); render();
-  } catch (e) { $('#sh-go').disabled = false; msg('Не получилось: ' + ((e && e.message) || e)); }
+  } catch (e) { D.share = prev; $('#sh-go').disabled = false; msg('Не получилось: ' + ((e && e.message) || e)); }
 }
-
+const ydWeb = f => 'https://disk.yandex.ru/client/disk/' + encodeURIComponent(String(f || '').replace(/^disk:\//, ''));
 // ---------- раздел настроек ----------
 async function shareTab() {
   const S = SH();
-  if (!hasApi || !window.api.files) return '<p class="hint">Совместная работа доступна в программе для Windows и на телефоне Android.</p>';
+  if (!hasApi || !window.api.ydisk) return '<p class="hint">Совместная работа доступна в программе для Windows и на телефоне Android.</p>';
+  const intro = `<div class="secbox">${ic('users')}<div><b>Общие проекты через Яндекс Диск</b><span>Выбранные проекты видят и меняют все участники. Личные задачи, бюджет и остальное остаются только у вас. Всё, что лежит на Диске, зашифровано паролем пространства — Яндекс видит только набор байтов.</span></div></div>`;
+  const old = S && S.folder && S.prov !== 'yd' ? `<p class="hint warn">Прежний способ (папка Google Диска и FolderSync) больше не используется. Подключитесь через Яндекс Диск — ваши общие проекты сохранятся и выгрузятся в новую папку.</p>` : '';
   if (!shareOn()) {
-    const acc = IS_PHONE ? await window.api.files.hasAccess() : true;
-    return `<div class="secbox">${ic('users')}<div><b>Общие проекты через Google Диск</b><span>Выбранные проекты видят и меняют все участники. Личные задачи, бюджет и остальные проекты остаются только у вас.</span></div></div>
-      <ol class="shsteps">${IS_PHONE ? `<li>Установите из Google Play приложение <b>FolderSync</b>, войдите в нём в свой Google-аккаунт и создайте синхронизацию: папка Google Диска с общими файлами ↔ папка <b>${SHARE_DEF_PHONE}</b> в памяти телефона, режим «В обе стороны», каждые 15 минут.</li><li>Разрешите Планеру доступ к файлам, укажите ту же папку и введите пароль пространства.</li>`
-      : '<li>Установите «Google Диск для компьютера» и войдите в аккаунт.</li><li>Создайте на Google Диске папку, например «Планер-общий», и откройте к ней доступ участникам (правая кнопка → «Поделиться»).</li><li>Нажмите «Выбрать папку» и укажите её — она находится на диске G: или в «Google Диск» в Проводнике.</li>'}<li>Придумайте пароль пространства (если папка новая) или введите пароль, который вам сообщил создатель. Им шифруются все общие данные — Google видит только зашифрованные файлы.</li></ol>
-      ${IS_PHONE ? `<div class="sline"><div class="tx"><b>Доступ к файлам</b><span>${acc ? 'Разрешён' : 'Нужен, чтобы Планер видел папку, которую синхронизирует FolderSync'}</span></div>${acc ? `<span class="okmark">${ic('check')}</span>` : '<button class="btn pri" data-act="shAccess">Разрешить</button>'}</div>` : ''}
-      <label class="f"><span>Ваше имя для других участников</span><input class="in" id="sh-name" maxlength="30" value="${esc((S && S.me && S.me.name) || '')}" placeholder="Например, Дмитрий"></label>
-      ${IS_PHONE ? `<label class="f"><span>Папка в памяти телефона</span><input class="in" id="sh-folder" value="${esc((S && S.folder) || SHARE_DEF_PHONE)}"></label>`
-        : `<div class="f"><span>Общая папка</span><div class="shpick"><div class="path" id="sh-path">${esc(UI.shFolder || 'не выбрана')}</div><button class="btn" data-act="shPick">${ic('folder')} Выбрать папку…</button></div></div>`}
+    if (!S || S.prov !== 'yd' || !S.token) {
+      // шаг 1: вход
+      const c = YDL.code;
+      return `${intro}${old}
+      <h3 class="shh3">1. Войдите в Яндекс</h3>
+      ${YD_CLIENT ? '' : `<details class="shcid" ${ydClient() ? '' : 'open'}><summary>ClientID приложения ${ydClient() ? '· указан' : '— нужен один раз'}</summary>
+        <ol class="shsteps"><li>Откройте <a href="https://oauth.yandex.ru/client/new" data-act="shExt" data-v="https://oauth.yandex.ru/client/new">oauth.yandex.ru → «Создать приложение»</a> и войдите своим Яндекс ID.</li>
+        <li>Название — «Планер». Платформа — <b>«Веб-сервисы»</b>, Redirect URI — <code>https://oauth.yandex.ru/verification_code</code>.</li>
+        <li>В «Доступ к данным» → <b>Яндекс Диск REST API</b> отметьте: «Чтение всего Диска», «Запись в любом месте на Диске», «Доступ к информации о Диске».</li>
+        <li>Создайте приложение и скопируйте <b>ClientID</b> сюда.</li></ol>
+        <label class="f"><span>ClientID</span><input class="in" id="yd-cid" value="${esc(D.settings.ydClient || '')}" placeholder="32 символа" autocomplete="off"></label></details>`}
+      ${c ? `<div class="ydcode"><span>Откройте <b>${esc(c.url.replace(/^https?:\/\//, ''))}</b> и введите код:</span><b class="code">${esc(c.user)}</b>
+          <div class="fbtn"><button class="btn pri" data-act="shExt" data-v="${esc(c.url)}">${ic('ext')} Открыть страницу Яндекса</button><button class="btn" data-act="shCopy" data-v="${esc(c.user)}">${ic('copy')} Скопировать код</button><button class="btn ghost" data-act="ydCancel">Отмена</button></div>
+          <p class="hint">Жду подтверждения… Можно ввести код на любом устройстве — компьютере или телефоне.</p></div>`
+        : `<div><button class="btn pri" data-act="ydLogin">${ic('users')} Войти через Яндекс</button></div>
+          <p class="hint">Планер покажет короткий код — его нужно ввести на странице Яндекса и нажать «Разрешить». Вход сохраняется примерно на год.</p>`}
+      <details class="shcid" ${YDL.manual ? 'open' : ''}><summary>Другой способ: вставить токен</summary>
+        <p class="hint">Откройте страницу Яндекса, нажмите «Разрешить» и скопируйте показанный токен.</p>
+        <div class="fbtn"><button class="btn" data-act="ydTokenPage">${ic('ext')} Получить токен</button></div>
+        <label class="f"><span>Токен</span><input class="in" id="yd-token" type="password" autocomplete="off" placeholder="y0_…"></label>
+        <div><button class="btn" data-act="ydTokenGo">Войти с токеном</button></div></details>
+      <p class="hint warn" id="sh-err">${esc(YDL.err)}</p>`;
+    }
+    // шаг 2: папка, имя, пароль
+    if (!YDL.folders) setTimeout(ydFolders, 0);
+    const F = YDL.folders || [];
+    return `${intro}${old}
+      <div class="sline"><div class="tx"><b>Яндекс: ${esc(S.login || '')}</b><span>Вход выполнен</span></div><button class="btn ghost" data-act="ydLogout">Выйти</button></div>
+      <h3 class="shh3">2. Общая папка на Яндекс Диске</h3>
+      <p class="hint">Создатель пространства делает новую папку (кнопка ниже), затем открывает доступ на Яндекс Диске: папка → «Поделиться» → «Пригласить» по адресу Яндекс Почты участника с правом редактирования. Участник принимает приглашение — папка появляется у него на Диске, и он выбирает её здесь.</p>
+      <div class="ydf">${YDL.folders ? F.map(f => `<label class="ydfi ${YDL.pick === f.name ? 'on' : ''}"><input type="radio" name="ydf" value="${esc(f.name)}" ${YDL.pick === f.name ? 'checked' : ''}>${ic('folder')}<span>${esc(f.name)}</span>${f.shared ? `<em>${f.own ? 'общая · моя' : 'общая'}</em>` : ''}</label>`).join('') : '<p class="hint">Загружаю список папок…</p>'}
+        <label class="ydfi ${YDL.pick === '+new' ? 'on' : ''}"><input type="radio" name="ydf" value="+new" ${YDL.pick === '+new' ? 'checked' : ''}>${ic('plus')}<span>Новая папка:</span><input class="in" id="sh-new" value="Планер — общие проекты" maxlength="80"></label></div>
+      <button class="btn sm ghost" data-act="ydReload">${ic('sync')} Обновить список</button>
+      <h3 class="shh3">3. Имя и пароль пространства</h3>
+      <label class="f"><span>Ваше имя для других участников</span><input class="in" id="sh-name" maxlength="30" value="${esc((S.me && S.me.name) || '')}" placeholder="Например, Дмитрий"></label>
       <label class="f"><span>Пароль пространства</span><input class="in" type="password" id="sh-pass" autocomplete="new-password" placeholder="не короче 6 символов"></label>
-      <p class="hint warn" id="sh-err"></p>
+      <p class="hint">Если папка новая — придумайте пароль и сообщите его участникам. Если папку создал другой участник — введите его пароль.</p>
+      <p class="hint warn" id="sh-err">${esc(YDL.err)}</p>
       <div><button class="btn pri" id="sh-go" data-act="shConnect">${ic('users')} Подключить</button></div>`;
   }
   const mem = [S.me, ...Object.values(S.members || {})], shp = D.projects.filter(p => p.shared);
   const ago = ts => { if (!ts) return 'ещё не было'; const m = Math.round((Date.now() - ts) / 60000); return m < 1 ? 'только что' : m < 60 ? m + ' мин назад' : fmtTs(ts); };
-  return `<div class="secbox on">${ic('users')}<div><b>Подключено: ${esc(S.space.name)}</b><span>Синхронизация: ${ago(S.last)}${SHS.busy ? ' · идёт обмен…' : ''}</span></div><button class="btn" data-act="shSync">${ic('sync')} Сейчас</button></div>
+  return `<div class="secbox on">${ic('users')}<div><b>Подключено: ${esc(S.space.name)}</b><span>Синхронизация: ${ago(S.last)}${SHS.busy ? ' · идёт обмен…' : ''}</span></div><button class="btn" data-act="shSync">${ic('sync')} Обменяться сейчас</button></div>
     ${SHS.err ? `<p class="hint warn">${esc(SHS.err)}</p>` : ''}
-    <div class="sline"><div class="tx"><b>Общая папка</b><div class="path">${esc(S.folder)}</div></div></div>
-    <div class="sline"><div class="tx"><b>Участники</b><span>Появляются после первого обмена на их устройстве</span><div class="mems">${mem.map(m => `<span class="mem">${whoChip(m.id)}${esc(m.name)}${m.id === S.me.id ? ' <small>— вы</small>' : m.at ? ` <small>${ago(m.at)}</small>` : ''}</span>`).join('')}</div></div></div>
+    <div class="sline"><div class="tx"><b>Яндекс Диск</b><span>${esc(S.login || '')} · папка «${esc(S.folder.replace(/^disk:\//, ''))}»</span></div><button class="btn ghost" data-act="shExt" data-v="${esc(ydWeb(S.folder))}">${ic('ext')} Открыть на Диске</button></div>
+    <div class="sline"><div class="tx"><b>Участники</b><span>Появляются после первого обмена на их устройстве. Пригласить нового: откройте папку на Диске → «Поделиться» → «Пригласить», затем сообщите ему пароль пространства.</span><div class="mems">${mem.map(m => `<span class="mem">${whoChip(m.id)}${esc(m.name)}${m.id === S.me.id ? ' (я)' : ''}</span>`).join('')}</div></div></div>
     <div class="sline"><div class="tx"><b>Общие проекты</b><span>${shp.length ? shp.map(p => esc(p.title)).join(', ') : 'Пока нет. Откройте проект → «Изменить» → включите «Общий проект»'}</span></div></div>
-    <div class="sline"><div class="tx"><b>Напоминания по общим задачам — только исполнителю</b><span>Задача с исполнителем напоминает только ему. Без исполнителя — всем участникам</span></div><input type="checkbox" class="tog" id="sh-remmine" ${S.remMine !== false ? 'checked' : ''}></div>
+    <div class="sline"><div class="tx"><b>Напоминания по общим задачам — только исполнителю</b><span>Задача с исполнителем напоминает только ему. Без исполнителя — всем.</span></div><input type="checkbox" class="tog" id="sh-remmine" ${S.remMine !== false ? 'checked' : ''}></div>
     <div class="sline"><div class="tx"><b>Моё имя</b></div><div class="ctl"><input class="in" id="sh-rename" value="${esc(S.me.name)}" maxlength="30" style="width:12rem"></div></div>
-    <div class="sline"><div class="tx"><b>Отключиться</b><span>Общие проекты останутся у вас как личные копии и перестанут обновляться</span></div><button class="btn danger" data-act="shOff">Отключить</button></div>`;
+    <div class="sline"><div class="tx"><b>Отключиться</b><span>Общие проекты останутся у вас как личные копии и перестанут обновляться</span></div><button class="btn danger" data-act="shOff">Отключиться</button></div>`;
 }
 Object.assign(ACT, {
-  shPick: async () => { const p = await window.api.files.pick(); if (p) { UI.shFolder = p; $('#sh-path').textContent = p; } },
-  shAccess: async () => { await window.api.files.askAccess(); toast('Включите «Разрешить доступ ко всем файлам» и вернитесь в Планер'); const t = setInterval(async () => { if (await window.api.files.hasAccess()) { clearInterval(t); if (UI.settab === 'share') drawSettings(); } }, 1500); setTimeout(() => clearInterval(t), 120000); },
+  ydLogin: () => ydLoginStart(),
+  ydCancel: () => { clearTimeout(YDL.timer); YDL.code = null; drawSettings(); },
+  ydTokenPage: () => { const c = ydClient(); if (!c) { YDL.err = 'Сначала укажите ClientID приложения.'; return drawSettings(); } openExternal('https://oauth.yandex.ru/authorize?response_type=token&client_id=' + encodeURIComponent(c)); },
+  ydTokenGo: () => { const t = ($('#yd-token').value || '').trim(); if (t.length < 20) { YDL.err = 'Вставьте токен целиком'; return drawSettings(); } ydGotToken(t); },
+  ydLogout: () => { const me = D.share && D.share.me; D.share = me ? { me } : null; YDL.folders = null; YDL.pick = ''; save(); drawSettings(); },
+  ydReload: () => { YDL.folders = null; drawSettings(); },
+  shExt: b => openExternal(b.dataset.v),
+  shCopy: b => { navigator.clipboard.writeText(b.dataset.v).then(() => toast('Код скопирован'), () => toast(b.dataset.v)); },
   shConnect: () => shareConnect(),
   shGiven: b => { b.closest && b.closest('.al') && b.closest('.al').remove(); TF.filter = b.dataset.v; go('board'); },
   shSync: async () => { const ok = await syncNow(true); toast(ok ? 'Синхронизировано' : 'Не получилось — см. сообщение в настройках'); },
-  shOff: () => { if (!shareOn()) return; clearInterval(SHS.timer); D.projects.forEach(p => { delete p.shared; }); const me = D.share.me; D.share = { me: { ...me } }; save(); drawSettings(); render(); toast('Совместная работа отключена'); }
+  shOff: () => { if (!shareOn()) return; clearInterval(SHS.timer); D.projects.forEach(p => { delete p.shared; }); const S = D.share; D.share = { prov: 'yd', token: S.token, login: S.login, me: { ...S.me } }; YDL.folders = null; save(); drawSettings(); render(); toast('Совместная работа отключена'); }
 });
-document.addEventListener('change', e => { if (e.target.id === 'sh-remmine' && shareOn()) { D.share.remMine = e.target.checked; save(); return; } if (e.target.id === 'sh-rename' && shareOn()) { const v = e.target.value.trim(); if (v) { D.share.me.name = v; shareDirty(); save(); toast('Имя изменено'); } } }, true);
+document.addEventListener('change', e => {
+  if (e.target.name === 'ydf') { YDL.pick = e.target.value; $$('.ydfi').forEach(x => x.classList.toggle('on', x.contains(e.target))); }
+  if (e.target.id === 'yd-cid') { D.settings.ydClient = e.target.value.trim(); save(); }
+  if (e.target.id === 'sh-remmine' && shareOn()) { D.share.remMine = e.target.checked; save(); return; }
+  if (e.target.id === 'sh-rename' && shareOn()) { const v = e.target.value.trim(); if (v) { D.share.me.name = v; save(); shareDirty(); toast('Имя изменено'); } }
+});
+document.addEventListener('focusin', e => { if (e.target.id === 'sh-new') { YDL.pick = '+new'; const r = e.target.closest('.ydfi'); if (r) { r.querySelector('input[type=radio]').checked = true; $$('.ydfi').forEach(x => x.classList.toggle('on', x === r)); } } });
 // проект стал личным — забываем его записи, чтобы у других он не удалился
 function unshareProject(p) {
   const S = SH(); if (!S || !S.base) return;

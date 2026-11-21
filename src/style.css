@@ -1371,3 +1371,16 @@ body.mob .rb.tgt .rbt,body.mob .rb.marked .rbt{display:flex;width:max-content;ma
 .rlinks .chip{font-size:.8rem}
 .rlc{display:inline-flex;align-items:center;gap:.2rem;color:var(--acc);font-weight:700}.rlc .ic{width:.9rem;height:.9rem}
 .rlb{display:inline-flex;align-items:center;gap:.1rem;color:var(--acc);font-size:.72rem;font-weight:700;margin-right:.3rem;flex:none}.rlb .ic{width:.75rem;height:.75rem}
+/* ---- 3.20: совместная работа через Яндекс Диск ---- */
+.shh3{font-size:.95rem;margin:1.1rem 0 .4rem}
+.shcid{margin:.5rem 0;border:1px solid var(--line);border-radius:.7rem;padding:.5rem .8rem;background:var(--panel)}
+.shcid summary{cursor:pointer;font-weight:600;font-size:.9rem}
+.shcid code{background:var(--bg2);border-radius:.3rem;padding:0 .3rem;font-size:.85em;user-select:all}
+.ydcode{border:1px solid var(--acc);border-radius:.9rem;padding:.9rem 1rem;background:color-mix(in srgb,var(--acc) 8%,var(--panel));display:grid;gap:.5rem;justify-items:start}
+.ydcode .code{font-size:2rem;letter-spacing:.18em;font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;user-select:all}
+.ydf{display:grid;gap:.35rem;margin:.4rem 0}
+.ydfi{display:flex;align-items:center;gap:.55rem;border:1px solid var(--line);border-radius:.7rem;padding:.5rem .7rem;cursor:pointer;background:var(--panel)}
+.ydfi.on{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 10%,var(--panel))}
+.ydfi .ic{width:1rem;height:1rem;color:var(--mute)}
+.ydfi span{flex:none}.ydfi em{margin-left:auto;font-style:normal;font-size:.75rem;color:var(--ok);font-weight:700}
+.ydfi .in{flex:1;height:2rem}

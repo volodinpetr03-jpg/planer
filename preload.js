@@ -31,16 +31,7 @@ contextBridge.exposeInMainWorld('api', {
   notify: o => ipcRenderer.send('notify', o),
   docPdf: o => ipcRenderer.invoke('doc-pdf', o),
   docSave: o => ipcRenderer.invoke('doc-save', o),
-  files: {
-    pick: () => ipcRenderer.invoke('files:pick'),
-    setRoot: p => ipcRenderer.invoke('files:setRoot', p),
-    list: d => ipcRenderer.invoke('files:list', d),
-    read: f => ipcRenderer.invoke('files:read', f),
-    write: (f, c) => ipcRenderer.invoke('files:write', f, c),
-    mkdir: d => ipcRenderer.invoke('files:mkdir', d),
-    hasAccess: async () => true,
-    askAccess: async () => {}
-  },
+  ydisk: req => ipcRenderer.invoke('ydisk', req),
   stt: req => ipcRenderer.invoke('ai-stt', req),
   focusAlarm: o => ipcRenderer.send('focus:alarm', o),
   focusCancel: () => ipcRenderer.send('focus:cancel'),
