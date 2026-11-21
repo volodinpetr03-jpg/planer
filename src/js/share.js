@@ -37,7 +37,7 @@ async function sOpen(k, o) { return JSON.parse(sDec.decode(await crypto.subtle.d
 
 // ---------- записи: что уходит другим участникам ----------
 // колонки и теги у каждого свои, поэтому передаются названиями; папка проекта — личная
-const T_KEYS = ['title', 'desc', 'order', 'prio', 'project', 'parent', 'postponed', 'date', 'time', 'dur', 'remind', 'rem2', 'nag', 'repeat', 'checklist', 'created', 'doneAt', 'archived', 'who', 'asg', 'laws', 'spent'];
+const T_KEYS = ['title', 'desc', 'order', 'prio', 'project', 'parent', 'postponed', 'date', 'time', 'dur', 'remind', 'rem2', 'nag', 'repeat', 'checklist', 'created', 'doneAt', 'archived', 'who', 'asg', 'laws', 'spent', 'comments', 'hist'];
 const P_KEYS = ['title', 'color', 'desc', 'status', 'start', 'deadline', 'budget', 'created'];
 function recOfTask(t) { const r = { k: 't', id: t.id }; T_KEYS.forEach(k => r[k] = t[k] === undefined ? null : t[k]); const c = colOf(t.col); r.colName = c ? c.title : ''; r.done = isDone(t); r.tagNames = (t.tags || []).map(id => tagOf(id)).filter(Boolean).map(x => x.title).sort(); return r; }
 function recOfProj(p) { const r = { k: 'p', id: p.id }; P_KEYS.forEach(k => r[k] = p[k] === undefined ? null : p[k]); return r; }
@@ -88,9 +88,10 @@ async function syncNow(force) {
     others.forEach(x => { S.members[x.m.id] = { id: x.m.id, name: x.m.name, color: x.m.color, at: x.at }; });
     // что изменилось у меня с прошлого раза (base — общие записи в том виде, как я их записал в прошлый раз)
     S.base = S.base || {}; S.meta = S.meta || {}; S.tombs = S.tombs || {};
-    const now = Date.now(), loc = collectShared(), J = JSON.stringify;
+    const now = Date.now(), J = JSON.stringify; let loc = collectShared();
     const changedLocal = new Set(Object.keys(loc).filter(id => !S.base[id] || typeof S.base[id] !== 'object' || J(S.base[id]) !== J(loc[id])));
     const deletedLocal = new Set(Object.keys(S.base).filter(id => !loc[id] && !S.tombs[id]));
+    if (typeof histStamp === 'function' && histStamp(S.base, loc, changedLocal)) loc = collectShared(); // журнал изменений
     // у других участников: по каждой записи — самая поздняя версия (или удаление)
     const best = {};
     const offer = (id, c) => { const b = best[id]; if (!b || c.upd > b.upd) best[id] = c; };
@@ -119,10 +120,13 @@ async function syncNow(force) {
         const bs = (S.base[id] && typeof S.base[id] === 'object') ? S.base[id] : {}; next = {};
         new Set([...Object.keys(body), ...Object.keys(loc[id])]).forEach(k => { next[k] = J(loc[id][k]) !== J(bs[k]) ? loc[id][k] : body[k]; });
       }
+      if (next.k === 't' && loc[id] && typeof mergeList === 'function') { next = { ...next, comments: mergeList(loc[id].comments, body.comments), hist: mergeList(loc[id].hist, body.hist).slice(-60) }; } // комментарии и журнал — объединяем
       if (!loc[id] || J(loc[id]) !== J(next)) {
-        const old = next.k === 't' ? byId(id) : null, oldWho = old ? old.who : null, oldDone = old ? isDone(old) : false;
+        const old = next.k === 't' ? byId(id) : null, oldWho = old ? old.who : null, oldDone = old ? isDone(old) : false, oldCm = new Set(((old && old.comments) || []).map(c => c.id));
         applyRec(next); changed = true;
-        if (next.k === 't') { const t = byId(id); if (t && t.who === me && oldWho !== me && !isDone(t)) events.push({ k: 'asg', t, by }); if (t && t.asg === me && t.who && t.who !== me && isDone(t) && old && !oldDone) events.push({ k: 'done', t }); }
+        if (next.k === 't') { const t = byId(id); if (t && t.who === me && oldWho !== me && !isDone(t)) events.push({ k: 'asg', t, by }); if (t && t.asg === me && t.who && t.who !== me && isDone(t) && old && !oldDone) events.push({ k: 'done', t });
+          const nc = t ? (t.comments || []).filter(c => !c.del && c.by !== me && !oldCm.has(c.id)) : [];
+          if (nc.length && S.last && (t.who === me || t.asg === me || (t.comments || []).some(c => c.by === me))) events.push({ k: 'cm', t, c: nc[nc.length - 1], n: nc.length }); }
       }
       S.meta[id] = { upd, by }; delete S.tombs[id];
     }
@@ -140,7 +144,7 @@ async function syncNow(force) {
     S.last = now; SHS.dirty = false; SHS.lastSig = sig; if (!SHS.err || !/пароль/.test(SHS.err)) SHS.err = null;
     UI.syncing = false;
     save();
-    if (changed && !modalOpen() && !dragId) render(); else if (changed) drawSide();
+    if (changed && !modalOpen() && !dragId) render(); else if (changed) { drawSide(); if (UI.form && UI.form.t && typeof drawCm === 'function') drawCm(); }
     return true;
   } catch (e) {
     SHS.err = 'Нет доступа к общей папке: ' + ((e && e.message) || e);
@@ -165,6 +169,9 @@ function shareNotify(events, first) {
   const send = (title, body, task) => { shareAlert(title, body, task); if (hasApi && window.api.notify) window.api.notify({ title, body, task }); };
   if (asg.length > 3 || (first && asg.length > 1)) send('Вам назначено задач: ' + asg.length, asg.slice(0, 4).map(e => '• ' + e.t.title).join('\n'), null);
   else asg.forEach(e => send('Вам назначена задача', `${e.t.title}${e.t.date ? ' · ' + dueTxt(e.t) : ''}${projOf(e.t.project) ? ' · ' + projOf(e.t.project).title : ''}${e.by && e.by !== SH().me.id ? '\nНазначил(а): ' + name(e.by) : ''}`, e.t.id));
+  const cms = events.filter(e => e.k === 'cm');
+  if (cms.length > 3) send('Новые комментарии: ' + cms.length, cms.slice(0, 4).map(e => '• ' + e.t.title + ' — ' + name(e.c.by)).join('\n'), null);
+  else cms.forEach(e => send('Комментарий: ' + e.t.title, `${name(e.c.by)}: ${e.c.text.slice(0, 160)}${e.n > 1 ? `\n(и ещё ${e.n - 1})` : ''}`, e.t.id));
   if (done.length > 3) send('Выполнено поручений: ' + done.length, done.slice(0, 4).map(e => '• ' + e.t.title + ' — ' + name(e.t.who)).join('\n'), null);
   else done.forEach(e => send('Поручение выполнено', `${name(e.t.who)}: ${e.t.title}`, e.t.id));
   if (D.settings.sound !== false) beep();
