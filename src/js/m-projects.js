@@ -120,6 +120,7 @@ function openProjectForm(id) {
       <label class="f"><span>Бюджет, ${esc(cur())}</span><input class="in" id="p-budget" inputmode="decimal" value="${p.budget || ''}" placeholder="не задан"></label></div>
     <label class="f"><span>Папка</span><select class="in" id="p-folder"><option value="">Без папки</option>${folderOpts(null, 0, p.folder)}</select></label>
     <div class="row two"><label class="f"><span>Начало</span><input type="date" class="in" id="p-start" value="${p.start || ''}"></label><label class="f"><span>Срок</span><input type="date" class="in" id="p-dl" value="${p.deadline || ''}"></label></div>
+    ${shareOn() ? `<label class="sline shtog"><div class="tx"><b>${ic('users')} Общий проект</b><span>Проект и его задачи видят и меняют все участники «${esc(SH().space.name)}». Бюджет и операции остаются личными.</span></div><input type="checkbox" class="tog" id="p-shared" ${p.shared ? 'checked' : ''}></label>` : ''}
     <p class="hint">Срок проекта появится в календаре. Расходы с этим проектом считаются в его бюджете.</p>
   </form>
   <div class="mf">${src ? `<button class="btn ghost danger" data-act="fdel">${ic('trash')} Удалить</button>` : ''}<span class="spacer"></span><button class="btn" data-act="mclose">Отмена</button><button class="btn pri" data-act="fsave">Сохранить</button></div></div>`);
@@ -128,8 +129,9 @@ function openProjectForm(id) {
 function saveProjectForm() {
   const F = UI.form, p = F.p;
   p.title = $('#p-title').value.trim(); p.desc = $('#p-desc').value.trim(); p.status = $('#p-status').value; const b = parseMoney($('#p-budget').value); p.budget = b > 0 ? b : null; p.start = $('#p-start').value || null; p.deadline = $('#p-dl').value || null; p.folder = $('#p-folder').value || null;
+  if ($('#p-shared')) { const on = $('#p-shared').checked; if (!on && p.shared) unshareProject(p); if (on) p.shared = true; else delete p.shared; }
   if (!p.title) return toast('Введите название проекта');
-  snapU(); if (F.isNew) D.projects.push(p); else Object.assign(projOf(p.id), p);
+  snapU(); if (F.isNew) D.projects.push(p); else { Object.assign(projOf(p.id), p); if (!p.shared) delete projOf(p.id).shared; }
   save(); closeModal(); UI.proj = p.id; go('projects'); toast('Проект сохранён', true);
 }
 function openFolderForm(id, parent) {

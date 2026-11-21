@@ -156,6 +156,7 @@ function normalize(d) {
 }
 function save(now) {
   clearTimeout(saveT);
+  if (typeof shareDirty === 'function' && !UI.syncing) shareDirty();
   const run = () => {
     if (!D || UI.locked) return Promise.resolve(false);
     if (!hasApi) { try { localStorage.setItem('planer-web', JSON.stringify(D)); } catch (e) {} return Promise.resolve(true); }
@@ -173,8 +174,9 @@ const saveNow = () => save(true);
 window.addEventListener('beforeunload', () => { if (D && hasApi && !UI.locked) { clearTimeout(saveT); try { window.api.saveSync(clone(D)); } catch (e) {} } });
 // очистка: example — только пример; data — всё, кроме настроек, колонок, шаблонов и правил; full — полный сброс
 function resetData(mode) {
-  const s = D.settings, cols = D.columns, tpl = D.templates, rules = D.rules;
+  const s = D.settings, cols = D.columns, tpl = D.templates, rules = D.rules, sh = D.share;
   D = blank();
+  if (sh && mode !== 'full') D.share = { ...sh, base: {}, meta: {}, tombs: {} }; // общие проекты придут заново от участников, у них ничего не удалится
   if (mode !== 'full') D.settings = s; else D.settings.font = s.font;
   if (mode === 'data') { D.columns = cols; D.templates = tpl; D.rules = rules; }
   D.demo = false; D.settings.tourDone = true;

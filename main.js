@@ -316,6 +316,28 @@ ipcMain.handle('data:import', async () => {
 ipcMain.on('app:titlebar', (e, o) => { try { if (win && win.setTitleBarOverlay) win.setTitleBarOverlay({ color: o.color, symbolColor: o.symbol, height: Math.round(48 * (o.zoom || 1)) }); if (win) win.setBackgroundColor(o.color); } catch (err) {} });
 ipcMain.on('app:quit', () => { quitting = true; app.quit(); });
 
+// ---------- Общая папка для совместных проектов (Google Диск для компьютера) ----------
+let shareRoot = null;
+const inRoot = p => { if (!shareRoot) return false; const r = path.resolve(shareRoot), x = path.resolve(p); return x === r || x.startsWith(r + path.sep); };
+ipcMain.handle('files:pick', async () => {
+  const r = await dialog.showOpenDialog(win, { title: 'Общая папка для совместных проектов', properties: ['openDirectory', 'createDirectory'] });
+  if (r.canceled || !r.filePaths[0]) return null; shareRoot = r.filePaths[0]; return shareRoot;
+});
+ipcMain.handle('files:setRoot', (e, p) => { try { if (p && fs.statSync(p).isDirectory()) { shareRoot = p; return true; } } catch (err) {} return false; });
+ipcMain.handle('files:list', (e, dir) => {
+  if (!inRoot(dir)) return null;
+  try { return fs.readdirSync(dir).map(name => { try { const st = fs.statSync(path.join(dir, name)); return { name, mtime: st.mtimeMs, size: st.size, type: st.isDirectory() ? 'directory' : 'file' }; } catch (err) { return null; } }).filter(Boolean); } catch (err) { return null; }
+});
+ipcMain.handle('files:read', (e, f) => { if (!inRoot(f)) return null; try { return fs.readFileSync(f, 'utf8'); } catch (err) { return null; } });
+ipcMain.handle('files:write', (e, f, content) => {
+  if (!inRoot(f)) throw new Error('путь вне общей папки');
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  const tmp = path.join(path.dirname(f), '.~' + path.basename(f) + '.tmp');
+  try { fs.writeFileSync(tmp, content); fs.renameSync(tmp, f); } catch (err) { try { fs.unlinkSync(tmp); } catch (e2) {} fs.writeFileSync(f, content); }
+  return true;
+});
+ipcMain.handle('files:mkdir', (e, d) => { if (!inRoot(d)) return false; fs.mkdirSync(d, { recursive: true }); return true; });
+
 // ---------- Жизненный цикл ----------
 app.on('second-instance', showWindow);
 app.whenReady().then(() => {

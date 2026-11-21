@@ -26,6 +26,16 @@ contextBridge.exposeInMainWorld('api', {
     disable: pw => ipcRenderer.invoke('lock:disable', pw),
     lockUi: () => ipcRenderer.send('lock:ui')
   },
+  files: {
+    pick: () => ipcRenderer.invoke('files:pick'),
+    setRoot: p => ipcRenderer.invoke('files:setRoot', p),
+    list: d => ipcRenderer.invoke('files:list', d),
+    read: f => ipcRenderer.invoke('files:read', f),
+    write: (f, c) => ipcRenderer.invoke('files:write', f, c),
+    mkdir: d => ipcRenderer.invoke('files:mkdir', d),
+    hasAccess: async () => true,
+    askAccess: async () => {}
+  },
   on: (ch, fn) => {
     if (!['open-task', 'new-task', 'reminder', 'notified', 'open-pay', 'reminder-pay', 'lock-now'].includes(ch)) return;
     ipcRenderer.on(ch, (e, arg) => fn(arg));

@@ -39,7 +39,7 @@ function taskSheet(id) {
     <div class="shl"><span>Переместить в колонку</span><div class="chips">${D.columns.map(c => `<button class="chip ${c.id === t.col ? 'on' : ''}" data-act="shCol" data-id="${id}" data-v="${c.id}">${esc(c.title)}</button>`).join('')}</div></div>
     <div class="shf"><button class="btn ghost" data-act="shDate" data-id="${id}" data-v="">Убрать дату</button><span class="spacer"></span><button class="btn ghost danger" data-act="shDel" data-id="${id}">${ic('trash')} Удалить</button></div>`);
 }
-function sideProj(p, dep) { return `<button class="sproj" data-act="openProject" data-id="${p.id}" style="--c:${p.color};padding-left:${dep ? .95 + dep * 1.05 : .75}rem" title="${esc(p.title)}"><i></i><span>${esc(p.title)}</span><small>${projStats(p).pct}%</small></button>`; }
+function sideProj(p, dep) { return `<button class="sproj" data-act="openProject" data-id="${p.id}" style="--c:${p.color};padding-left:${dep ? .95 + dep * 1.05 : .75}rem" title="${esc(p.title)}"><i></i><span>${esc(p.title)}</span>${isShared(p) ? `<b class="shic" title="Общий проект">${ic('users')}</b>` : ''}<small>${projStats(p).pct}%</small></button>`; }
 function sideFolders(pid, dep) {
   return subFolders(pid).map(f => { const ps = D.projects.filter(p => p.folder === f.id && p.status === 'active'), inner = sideFolders(f.id, dep + 1); if (!ps.length && !inner && dep > 0) return ''; return `<div class="sfold" data-fdrop="${f.id}"><button class="sproj fold" data-act="fToggle" data-id="${f.id}" style="--c:${f.color || 'var(--mute)'};padding-left:${.35 + dep * 1.05}rem;gap:.4rem" title="${esc(f.title)}"><span class="fc ${f.open !== false ? 'open' : ''}">${ic('caret')}</span>${ic('folder')}<span>${esc(f.title)}</span></button>${f.open !== false ? ps.map(p => sideProj(p, dep + 1)).join('') + inner : ''}</div>`; }).join('');
 }
@@ -237,6 +237,7 @@ document.addEventListener('change', e => {
     if (t.dataset.ci !== undefined) { F.t.checklist[+t.dataset.ci].d = t.checked; t.closest('.ci').classList.toggle('d', t.checked); return; }
     if (['f-date', 'f-time', 'f-rem', 'f-rep'].includes(t.id)) { if (t.id === 'f-time' && t.value && !$('#f-dur').value) $('#f-dur').value = '60'; if (t.id === 'f-date' && !t.value) { $('#f-rem').value = ''; $('#f-rep').value = ''; } taskHint(); return; }
   }
+  if (F && F.kind === 'task' && t.id === 'f-proj' && $('#f-whow')) { $('#f-whow').hidden = !isShared(projOf(t.value)); return; }
   if (F && F.kind === 'tx' && t.id === 'x-proj') { const ct = F.catTouched; readTx(); drawTxForm(); UI.form.catTouched = ct; return; }
   if (F && F.kind === 'tx' && t.id === 'x-cat') { F.catTouched = true; $('#x-hint').textContent = ''; return; }
   if (F && F.kind === 'rule') {
@@ -376,6 +377,7 @@ function startApp(d) {
   let tourSeen = false; try { tourSeen = localStorage.getItem('planer-tour-done') === '1'; } catch (e) {}
   if (!fresh) D.settings.tourDone = true;
   if (fresh && !tourSeen && !D.settings.tourDone && !MOB()) setTimeout(tourStart, 800);
+  shareStart();
   if (hasApi) {
     window.api.on('open-task', id => { if (UI.locked) return; closeModal(); openTaskForm(id); });
     window.api.on('new-task', () => { if (UI.locked) return; closeModal(); openTaskForm(null, taskPreset()); });
@@ -403,6 +405,7 @@ function startApp(d) {
       const away = hiddenAt ? Date.now() - hiddenAt : 0; hiddenAt = 0;
       if (!UI.locked && LK.status.enabled && (D.settings.lockOnHide || (D.settings.autoLock && away > D.settings.autoLock * 60000))) lockNow();
       else if (!UI.locked && !modalOpen()) render();
+      if (!UI.locked) syncNow();
     });
   } else setInterval(webReminders, 15000);
   let wasMob = MOB(); window.addEventListener('resize', () => { const m = MOB(); if (m !== wasMob) { wasMob = m; document.body.classList.toggle('mob', m); document.body.classList.remove('sideopen', 'msearch'); if (!UI.locked) render(); } });

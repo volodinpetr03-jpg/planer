@@ -2,7 +2,7 @@
 // ============================================================
 //  Настройки: внешний вид, модули, колонки, теги, бюджет, данные
 // ============================================================
-const STABS = [['look', 'Внешний вид', 'palette'], ['security', 'Безопасность', 'shield'], ['smart', 'Умные функции', 'spark'], ['modules', 'Модули', 'puzzle'], ['cols', 'Колонки', 'board'], ['tags', 'Теги', 'tag'], ['money', 'Бюджет', 'wallet'], ['general', 'Общие', 'gear'], ['data', 'Данные', 'data'], ['archive', 'Архив', 'archive'], ['keys', 'Клавиши', 'list']];
+const STABS = [['look', 'Внешний вид', 'palette'], ['security', 'Безопасность', 'shield'], ['share', 'Совместная работа', 'users'], ['smart', 'Умные функции', 'spark'], ['modules', 'Модули', 'puzzle'], ['cols', 'Колонки', 'board'], ['tags', 'Теги', 'tag'], ['money', 'Бюджет', 'wallet'], ['general', 'Общие', 'gear'], ['data', 'Данные', 'data'], ['archive', 'Архив', 'archive'], ['keys', 'Клавиши', 'list']];
 const CURRENCIES = [['₽', 'Рубль ₽'], ['$', 'Доллар $'], ['€', 'Евро €'], ['₸', 'Тенге ₸'], ['Br', 'Белорусский рубль Br'], ['₴', 'Гривна ₴'], ['¥', 'Юань ¥'], ['£', 'Фунт £'], ['₺', 'Лира ₺'], ['сум', 'Сум']];
 function openSettings(tab) {
   UI.settab = tab || 'look';
@@ -23,6 +23,8 @@ async function drawSettings() {
       <div class="sline"><div class="tx"><b>Масштаб интерфейса</b><span>Как увеличение в браузере. Горячие клавиши: <kbd>Ctrl</kbd> <kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></span></div><div class="ctl w"><div class="rng"><input type="range" id="s-zoom" min="70" max="160" step="5" value="${Math.round(S.zoom * 100)}"><output id="o-zoom">${Math.round(S.zoom * 100)}%</output></div></div></div>
       <div class="sline"><div class="tx"><b>Компактное боковое меню</b><span>Только значки — больше места для доски и календаря</span></div><input type="checkbox" class="tog" id="s-coll" ${S.collapsed ? 'checked' : ''}></div>
       <div><button class="btn ghost" data-act="lookReset">Вернуть оформление по умолчанию</button></div>`;
+  } else if (tab === 'share') {
+    h = await shareTab(); if (UI.settab !== 'share') return;
   } else if (tab === 'security') {
     await refreshLockStatus(); if (UI.settab !== 'security') return;
     h = securityTab();

@@ -17,6 +17,7 @@ function matchF(t, f = TF.filter) {
   if (f === 'week') { const w = weekStart(td); return !!t.date && t.date >= w && t.date <= addDays(w, 6); }
   if (f === 'over') return !dn && !!t.date && t.date < td;
   if (f === 'nodate') return !t.date;
+  if (f === 'mine') return shareOn() && t.who === SH().me.id;
   return true;
 }
 const matchT = t => !TF.tags.size || (t.tags || []).some(x => TF.tags.has(x)) || (TF.tags.has('_') && !(t.tags || []).length);
@@ -30,7 +31,7 @@ function cardHtml(t, mini) {
   const due = t.date ? `<span class="m ${!dn && t.date < td ? 'over' : !dn && t.date === td ? 'tod' : ''}">${ic('clock')}${!dn && t.date < td ? 'Просрочено · ' : ''}${dueTxt(t)}</span>` : '';
   const meta = due + (t.remind != null && t.date && !dn ? `<span class="m" title="Напоминание">${ic('bell')}${REMS[t.remind] || ''}</span>` : '') + (t.repeat ? `<span class="m" title="Повтор">${ic('repeat')}${REPS[t.repeat]}</span>` : '') + (n ? `<span class="m ${cd === n ? 'okc' : ''}">${ic('list')}${cd}/${n}</span>` : '') + (spent ? `<span class="m mon" title="Расходы по задаче">${ic('coin')}${money0(spent)}</span>` : '');
   const sp = subProgress(t.id), par = t.parent && byId(t.parent);
-  const top = (p ? projChip(p) : '') + tagsHtml(t) + (t.prio === 2 && !dn ? '<span class="pri-t">Срочно</span>' : '');
+  const top = (t.who && isShared(p) ? whoChip(t.who) : '') + (p ? projChip(p) : '') + tagsHtml(t) + (t.prio === 2 && !dn ? '<span class="pri-t">Срочно</span>' : '');
   const metaSub = sp.n ? `<span class="m ${sp.d === sp.n ? 'okc' : ''}" title="Подзадачи">${ic('sub')}${sp.d}/${sp.n} подзадач</span>` : '';
   return `<article class="card p${t.prio} ${dn ? 'done' : ''} ${TF.flash === t.id ? 'flash' : ''}" draggable="true" data-id="${t.id}" data-act="openTask" tabindex="0" aria-label="${esc(t.title)}">
     ${mini ? '' : `<button class="cchk" data-act="complete" data-id="${t.id}" aria-label="${dn ? 'Вернуть в работу' : 'Отметить выполненной'}" title="${dn ? 'Вернуть в работу' : 'Выполнено'}">${ic('check')}</button>`}
@@ -72,7 +73,7 @@ registerModule({
   badge: () => live().filter(t => !isDone(t) && t.date && t.date < today()).length || '',
   bar() {
     const L = live(), td = today(), act = L.filter(t => !isDone(t)), over = act.filter(t => t.date && t.date < td).length, tod = act.filter(t => t.date === td).length;
-    const F = [['all', 'Все'], ['today', 'На сегодня'], ['week', 'Неделя'], ['over', 'Просрочено'], ['nodate', 'Без даты']];
+    const F = [['all', 'Все'], ['today', 'На сегодня'], ['week', 'Неделя'], ['over', 'Просрочено'], ['nodate', 'Без даты']].concat(shareOn() ? [['mine', 'Мои']] : []);
     const cnt = f => L.filter(t => matchF(t, f) && (f === 'all' || f === 'nodate' ? !isDone(t) : true)).length;
     return `<h1>Доска</h1><div class="stats"><span><b>${act.length}</b> в работе</span><span><b>${tod}</b> на сегодня</span><span class="${over ? 'red' : ''}"><b>${over}</b> просрочено</span></div><span class="sep"></span>
       <div class="chips">${F.map(([k, l]) => `<button class="chip ${TF.filter === k ? 'on' : ''}" data-act="tfilter" data-v="${k}">${l} <span class="n">${cnt(k)}</span></button>`).join('')}</div>
@@ -117,6 +118,7 @@ function openTaskForm(id, preset) {
       <div class="f"><span>Приоритет</span><div class="pseg" id="f-prio" role="group" aria-label="Приоритет">${PRIO.map(([l, c], i) => `<button type="button" class="${t.prio === i ? 'on' : ''}" data-act="fprio" data-v="${i}" style="--pc:${c}" aria-pressed="${t.prio === i}">${l}</button>`).join('')}</div></div>
     </div>
     <div class="row two"><div class="f"><span>Теги</span><div id="f-tags">${tagPick(t.tags, 'ftag')}</div></div>
+      ${shareOn() ? `<label class="f" id="f-whow" ${isShared(projOf(t.project)) ? '' : 'hidden'}><span>Исполнитель</span><select class="in" id="f-who"><option value="">Не назначен</option>${[SH().me, ...Object.values(SH().members || {})].map(m => `<option value="${m.id}" ${t.who === m.id ? 'selected' : ''}>${esc(m.name)}${m.id === SH().me.id ? ' (я)' : ''}</option>`).join('')}</select></label>` : ''}
       <label class="f"><span>Вложена в задачу</span><select class="in" id="f-parent"><option value="">Верхний уровень</option>${parents.map(x => `<option value="${x.id}" ${x.id === t.parent ? 'selected' : ''}>${'— '.repeat(ancestors(x).length)}${esc(x.title.slice(0, 60))}</option>`).join('')}</select></label></div>
     <div class="row">
       <label class="f"><span>Дата</span><input type="date" class="in" id="f-date" value="${t.date || ''}"></label>
@@ -158,6 +160,7 @@ function taskHint() {
 function readTaskForm() {
   const t = UI.form.t;
   t.title = $('#f-title').value.trim(); t.desc = $('#f-desc').value.trim(); t.col = $('#f-col').value; t.project = $('#f-proj').value || null; t.parent = $('#f-parent').value || null;
+  if ($('#f-who')) t.who = isShared(projOf(t.project)) ? ($('#f-who').value || null) : (t.who || null);
   const nd = $('#f-date').value || null; if (!UI.form.isNew) { const o = byId(t.id); if (o && o.date && nd && nd > o.date) t.postponed = (o.postponed || 0) + 1; }
   t.date = nd; t.time = t.date ? ($('#f-time').value || null) : null; t.dur = +$('#f-dur').value || null;
   t.remind = t.date && $('#f-rem').value !== '' ? Number($('#f-rem').value) : null; t.repeat = t.date ? ($('#f-rep').value || null) : null;
