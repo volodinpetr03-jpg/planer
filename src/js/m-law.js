@@ -261,7 +261,7 @@ function lawDocView(d) {
   if (LF.art) { const a = lawArt(d.id, LF.art); if (a) return `<div class="lview">${MOB() ? `<button class="back" data-act="lawBackToc">${ic('left')} Оглавление</button>` : ''}${artHtml(d, a)}</div>`; }
   const groups = []; L.forEach(a => { const g = groups[groups.length - 1]; if (!g || g.ch !== a.ch) groups.push({ ch: a.ch, items: [a] }); else g.items.push(a); });
   return `<div class="lview"><div class="ldhead"><div><h2>${esc(d.short || d.title)}</h2>${d.short ? `<p>${esc(d.title)}</p>` : ''}<small>${L.length} ${d.unit === 'п' ? plural(L.length, ['пункт', 'пункта', 'пунктов']) : plural(L.length, ['статья', 'статьи', 'статей'])}${d.rev ? ' · редакция от ' + d.rev.split('-').reverse().join('.') : ''}</small></div>
-    <div class="fbtn"><button class="btn sm" data-act="lawCheck" data-doc="${d.id}">${ic('ext')} Проверить актуальную редакцию</button><button class="btn sm ghost" data-act="lawEdit" data-doc="${d.id}">${ic('edit')} Свойства</button></div></div>
+    <div class="fbtn"><button class="btn sm" data-act="lawCheck" data-doc="${d.id}">${ic('ext')} Проверить актуальную редакцию</button>${d.url ? `<button class="btn sm ghost" data-act="lawOpenSite" data-id="${d.id}">${ic('ext')} На сайте</button>` : ''}<button class="btn sm ghost" data-act="lawEdit" data-doc="${d.id}">${ic('edit')} Свойства</button></div></div>
     <div class="ltoc">${groups.map((g, gi) => `${g.ch ? `<h4>${esc(g.ch)}</h4>` : ''}${g.items.map(a => `<button class="ltocl" data-act="lawOpen" data-doc="${d.id}" data-art="${a.id}"><b>${unitOf(d)} ${esc(a.n)}</b><span>${esc(a.t || '')}</span>${markOf(d.id, a.id) ? ic('bookmark') : ''}</button>`).join('')}`).join('')}</div></div>`;
 }
 function lawResults() {
@@ -295,6 +295,7 @@ function lawAddForm(replaceId) {
   const d = replaceId && lawDoc(replaceId);
   modal(`<div class="mbox narrow"><div class="mh"><h2>${d ? 'Обновить текст: ' + esc(d.short || d.title) : 'Добавить документ'}</h2><button class="ib" data-act="mclose" aria-label="Закрыть">${ic('x')}</button></div>
     <div class="mb">
+      ${hasApi && window.api.netGet ? `<div class="f"><span>Ссылка на документ</span><div class="lurl"><input class="in" id="lurl" placeholder="pravo.gov.ru, consultant.ru, garant.ru…" value="${esc(d && d.url ? d.url : '')}" inputmode="url"><button class="btn pri" data-act="lawUrlGo">${ic('upload')} Загрузить</button><button class="btn ghost" id="lurlstop" data-act="lawUrlStop" hidden>Стоп</button></div><p class="hint" id="lurlst">Планер сам скачает текст и разделит его на статьи. Если на сайте каждая статья на своей странице, загрузит их по очереди.</p></div><div class="lor"><span>или</span></div>` : ''}
       <div class="ldrop" id="ldrop"><input type="file" id="lfile" accept=".txt,.htm,.html,.docx,.rtf,text/plain,text/html" hidden>${ic('upload')}<b>Выберите файл</b><span>Word (.docx), RTF, HTML или текст — сохранённые с pravo.gov.ru или из КонсультантПлюс</span><button class="btn" data-act="lawPick">Выбрать файл…</button></div>
       <label class="f"><span>или вставьте текст документа целиком</span><textarea class="in" id="ltext" rows="7" placeholder="Скопируйте весь текст закона (Ctrl+A, Ctrl+C) и вставьте сюда"></textarea></label>
       <div id="lprev"></div>
@@ -308,7 +309,7 @@ function lawPreview(p) {
   $('#lprev').innerHTML = p.arts.length ? `<div class="lpv">
     <label class="f"><span>Название</span><input class="in" id="lp-title" value="${esc(p.title)}" placeholder="Полное название документа"></label>
     <div class="row two"><label class="f"><span>Коротко</span><input class="in" id="lp-short" value="${esc(p.short)}" placeholder="КоАП РФ, 69-ФЗ…"></label><label class="f"><span>Редакция от</span><input class="in" type="date" id="lp-rev" value="${p.rev}"></label></div>
-    <label class="f"><span>Ссылка на документ на официальном портале <em>— необязательно</em></span><input class="in" id="lp-url" placeholder="http://pravo.gov.ru/…" value="${esc(UI.form.replace ? (lawDoc(UI.form.replace).url || '') : '')}"></label>
+    <label class="f"><span>Ссылка на документ на официальном портале <em>— необязательно</em></span><input class="in" id="lp-url" placeholder="http://pravo.gov.ru/…" value="${esc(UI.form.srcUrl || (UI.form.replace ? (lawDoc(UI.form.replace).url || '') : ''))}"></label>
     <p class="hint"><b>Распознано:</b> ${p.arts.length} ${p.unit === 'п' ? plural(p.arts.length, ['пункт', 'пункта', 'пунктов']) : plural(p.arts.length, ['статья', 'статьи', 'статей'])}${ch ? `, ${ch} ${plural(ch, ['глава', 'главы', 'глав'])}` : ''}. Первые: ${p.arts.slice(0, 4).map(a => (p.unit === 'п' ? 'п. ' : 'ст. ') + esc(a.n)).join(', ')}${p.arts.length > 4 ? ' … последняя ' + (p.unit === 'п' ? 'п. ' : 'ст. ') + esc(p.arts[p.arts.length - 1].n) : ''}.</p></div>`
     : '<p class="hint warn">Не нашёл в тексте ни статей («Статья 1.»), ни пунктов («1.»). Проверьте, что вставлен текст самого документа.</p>';
   const go = $('[data-act=lawParseGo]'); if (go && p.arts.length) { go.textContent = 'Сохранить в библиотеку'; go.dataset.act = 'lawSave'; }
@@ -319,11 +320,9 @@ async function lawSaveParsed() {
   if (url && !/^https?:\/\//i.test(url)) return toast('Ссылка должна начинаться с http:// или https://');
   let d;
   if (F.replace) {
-    d = lawDoc(F.replace); const old = lawArts(d.id), byN = new Map(p.arts.map(a => [a.n, a]));
-    const remap = {}; old.forEach(a => { const nn = byN.get(a.n); if (nn) remap[a.id] = nn.id; });
-    LW().marks = LW().marks.filter(m => m.doc !== d.id || remap[m.art]); LW().marks.forEach(m => { if (m.doc === d.id) m.art = remap[m.art]; });
-    D.tasks.forEach(t => (t.laws || []).forEach(l => { if (l.doc === d.id && remap[l.art]) l.art = remap[l.art]; }));
-    Object.assign(d, { title, short, rev, url, unit: p.unit, n: p.arts.length, checked: Date.now() });
+    d = lawDoc(F.replace);
+    try { await lawApplyReplace(d, p, { title, short, rev, url }); } catch (e) { return toast('Не удалось сохранить текст: ' + ((e && e.message) || e)); }
+    save(); closeModal(); LF.doc = d.id; LF.art = null; LF.q = ''; go('law'); return toast('Текст документа обновлён');
   } else {
     d = { id: uid(), title, short, rev, url, unit: p.unit, n: p.arts.length, added: Date.now(), checked: Date.now() };
     LW().docs.push(d);
@@ -338,7 +337,8 @@ function lawEditForm(id) {
     <div class="mb"><label class="f"><span>Название</span><input class="in" id="le-title" value="${esc(d.title)}"></label>
     <div class="row two"><label class="f"><span>Коротко</span><input class="in" id="le-short" value="${esc(d.short || '')}"></label><label class="f"><span>Редакция от</span><input class="in" type="date" id="le-rev" value="${d.rev || ''}"></label></div>
     <label class="f"><span>Ссылка на официальном портале</span><input class="in" id="le-url" value="${esc(d.url || '')}" placeholder="http://pravo.gov.ru/…"></label>
-    <div class="sline"><div class="tx"><b>Вышла новая редакция?</b><span>Загрузите новый текст — закладки и ссылки из задач перенесутся по номерам статей</span></div><button class="btn" data-act="lawReplace" data-doc="${d.id}">${ic('upload')} Обновить текст</button></div></div>
+    <div class="sline"><div class="tx"><b>Вышла новая редакция?</b><span>Загрузите новый текст — закладки и ссылки из задач перенесутся по номерам статей</span></div><button class="btn" data-act="lawReplace" data-doc="${d.id}">${ic('upload')} Обновить текст</button></div>
+    ${d.url && hasApi && window.api.netGet ? `<div class="sline"><div class="tx"><b>Проверить по ссылке</b><span>Скачать документ с сайта и сравнить с вашей копией</span></div><button class="btn" data-act="lawReload" data-doc="${d.id}">${ic('sync')} Проверить</button></div>` : ''}</div>
     <div class="mf"><button class="btn ghost danger" data-act="lawDel" data-doc="${d.id}">${ic('trash')} Удалить</button><span class="spacer"></span><button class="btn" data-act="mclose">Отмена</button><button class="btn pri" data-act="lawEditSave">Сохранить</button></div></div>`);
 }
 function openExternal(url) {
@@ -384,6 +384,7 @@ Object.assign(ACT, {
   lawCheck: b => {
     const d = lawDoc(b.dataset.doc); if (!d) return;
     d.checked = Date.now(); save();
+    if (d.url && hasApi && window.api.netGet) { lawCheckUpdate(d); return; }
     if (d.url) { openExternal(d.url); toast('Сравните дату редакции. Вышла новая — «Свойства» → «Обновить текст»'); }
     else { navigator.clipboard.writeText(d.title).catch(() => {}); openExternal(LAW_PORTAL); toast('Название документа скопировано — вставьте его в поиск на портале', false, { act: 'lawEdit', id: d.id, label: 'Сохранить ссылку' }); }
     if (UI.view === 'law') render();
@@ -421,3 +422,124 @@ document.addEventListener('change', async e => {
 // полный текст вставки (поле показывает начало длинного файла)
 const _lawParseGo = ACT.lawParseGo;
 ACT.lawParseGo = () => { if (UI.form && UI.form.fullText && $('#ltext').value.endsWith('\n…')) return lawPreview(lawParse(UI.form.fullText)); _lawParseGo(); };
+
+// ============================================================
+//  Загрузка документа по ссылке: pravo.gov.ru, КонсультантПлюс, Гарант и другие сайты с текстами законов.
+//  Если на странице только оглавление (у КонсультантПлюс каждая статья — отдельная страница),
+//  Планер по очереди загружает страницы статей.
+// ============================================================
+const b64u8 = s => Uint8Array.from(atob(s || ''), c => c.charCodeAt(0));
+async function netGet(url) {
+  if (!hasApi || !window.api.netGet) throw new Error('загрузка по ссылке работает в программе для Windows и на телефоне');
+  const r = await window.api.netGet(url);
+  if (!r || r.status === 0) throw new Error('сайт не открылся: ' + ((r && r.error) || 'нет связи'));
+  if (r.status === 403 || r.status === 429) throw new Error(`сайт не отдаёт страницу (код ${r.status}) — возможно, ограничение доступа. Сохраните документ файлом и добавьте его`);
+  if (r.status >= 400) throw new Error(`сайт ответил ошибкой ${r.status}`);
+  return { bytes: b64u8(r.b64), ct: String(r.ct || '').toLowerCase(), url: r.url || url };
+}
+function decodeHtml(bytes, ct) {
+  let cs = (ct.match(/charset=([\w-]+)/) || [])[1];
+  if (!cs) { const head = new TextDecoder('latin1').decode(bytes.subarray(0, 4096)); cs = (head.match(/<meta[^>]+charset=["']?([\w-]+)/i) || [])[1]; }
+  try { if (cs) return new TextDecoder(/1251/.test(cs) ? 'windows-1251' : cs).decode(bytes); } catch (e) {}
+  const t = new TextDecoder('utf-8').decode(bytes); return t.includes('�') ? new TextDecoder('windows-1251').decode(bytes) : t;
+}
+// официальный портал: ссылку на просмотр документа превращаем в ссылку на его текст
+function lawUrlFix(url) {
+  url = String(url || '').trim(); if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+  try { const u = new URL(url); if (/(^|\.)pravo\.gov\.ru$/.test(u.hostname) && !/^publication\./.test(u.hostname)) { const nd = u.searchParams.get('nd') || (u.search.match(/nd=(\d+)/) || [])[1]; if (nd) return `http://pravo.gov.ru/proxy/ips/?docbody=&nd=${nd}`; } } catch (e) {}
+  return url;
+}
+// основной текст страницы: убираем меню и подвалы, спускаемся к блоку, где сосредоточен текст
+const JUNK_SEL = 'script,style,noscript,iframe,svg,nav,header,footer,aside,form,button,select,[role=navigation],[aria-hidden=true]';
+const JUNK_CLS = /(menu|navbar|nav-|header|footer|sidebar|banner|advert|reklam|cookie|share|social|comment|breadcrumb|popup|modal|subscribe|login|search)/i;
+function mainText(doc) {
+  doc.querySelectorAll(JUNK_SEL).forEach(x => x.remove());
+  doc.querySelectorAll('[class],[id]').forEach(x => { const k = (x.className && x.className.baseVal === undefined ? x.className : '') + ' ' + x.id; if (JUNK_CLS.test(k) && !/(document|content|text|law|article)/i.test(k)) x.remove(); });
+  const tl = el => { let t = (el.textContent || '').replace(/\s+/g, ' ').length; el.querySelectorAll('a').forEach(a => { t -= (a.textContent || '').replace(/\s+/g, ' ').length * 0.7; }); return t; };
+  let el = doc.body || doc.documentElement;
+  for (let k = 0; k < 30; k++) { const tot = tl(el); const kids = [...el.children].map(c => [c, tl(c)]).sort((a, b) => b[1] - a[1]); if (!kids.length || kids[0][1] < tot * 0.72) break; el = kids[0][0]; }
+  return htmlText(el.outerHTML);
+}
+function artLinks(doc, base) {
+  const out = [], seen = new Set(); let host = ''; try { host = new URL(base).hostname; } catch (e) {}
+  doc.querySelectorAll('a[href]').forEach(a => {
+    const t = (a.textContent || '').replace(/\s+/g, ' ').trim(); let href; try { href = new URL(a.getAttribute('href'), base); } catch (e) { return; }
+    if (href.hostname !== host) return; href.hash = '';
+    if (/^(Раздел|Глава|Подраздел)\s+[IVXLCDM\d]/i.test(t) && t.length < 200) { out.push({ head: t }); return; }
+    if (!/^(Статья|Ст\.)\s*\d/i.test(t) || seen.has(href.href)) return;
+    seen.add(href.href); out.push({ url: href.href, t });
+  });
+  return out;
+}
+const LDL = { stop: false };
+async function lawFromUrl(url, onProg) {
+  const src = lawUrlFix(url); onProg('Загружаю страницу…');
+  let r = await netGet(src); if (src !== url && r.bytes.length < 500) r = await netGet(url);
+  const low = r.url.toLowerCase();
+  if (/pdf/.test(r.ct) || /\.pdf($|\?)/.test(low)) throw new Error('по ссылке PDF — его Планер не читает. Откройте PDF, выделите весь текст и вставьте в поле ниже');
+  if (/officedocument\.wordprocessingml|\.docx($|\?)/.test(r.ct + ' ' + low)) return docxText(r.bytes);
+  if (/rtf/.test(r.ct) || /\.rtf($|\?)/.test(low)) return rtfText(new TextDecoder('latin1').decode(r.bytes));
+  const html = decodeHtml(r.bytes, r.ct);
+  if (!/<(html|body|p|div)/i.test(html)) return html; // обычный текст
+  const doc = new DOMParser().parseFromString(html, 'text/html'), links = artLinks(doc, r.url);
+  const text = mainText(new DOMParser().parseFromString(html, 'text/html'));
+  const parsed = lawParse(text), arts = links.filter(l => l.url);
+  const filled = parsed.arts.filter(a => a.body.length > 30).length;
+  if (filled >= Math.max(3, arts.length * 0.5)) return text;
+  if (arts.length < 3) return text;
+  // на странице только оглавление — загружаем статьи по одной
+  const head = text.split('\n'); const cut = head.findIndex(l => RX_ART.test(l) || RX_CH.test(l)); const parts = [(cut > 0 ? head.slice(0, cut) : head.slice(0, 30)).join('\n')];
+  LDL.stop = false; let i = 0, fails = 0;
+  for (const l of links) {
+    if (LDL.stop) throw new Error('загрузка остановлена');
+    if (l.head) { parts.push(l.head); continue; }
+    i++; onProg(`Загружаю статьи: ${i} из ${arts.length}…`, i / arts.length);
+    try {
+      const p = await netGet(l.url), t = mainText(new DOMParser().parseFromString(decodeHtml(p.bytes, p.ct), 'text/html'));
+      const lines = t.split('\n'), s = lines.findIndex(x => RX_ART.test(x));
+      parts.push(s >= 0 ? lines.slice(s).join('\n') : `${l.t}\n${t}`);
+    } catch (e) { if (++fails > 5) throw new Error('сайт перестал отдавать страницы статей (' + e.message + ')'); parts.push(l.t + '\n(текст не загрузился)'); }
+    await new Promise(res => setTimeout(res, 150));
+  }
+  return parts.join('\n');
+}
+function lawApplyReplace(d, p, meta) {
+  const old = lawArts(d.id), byN = new Map(p.arts.map(a => [a.n, a])), remap = {};
+  old.forEach(a => { const nn = byN.get(a.n); if (nn) remap[a.id] = nn.id; });
+  LW().marks = LW().marks.filter(m => m.doc !== d.id || remap[m.art]); LW().marks.forEach(m => { if (m.doc === d.id) m.art = remap[m.art]; });
+  D.tasks.forEach(t => (t.laws || []).forEach(l => { if (l.doc === d.id && remap[l.art]) l.art = remap[l.art]; }));
+  Object.assign(d, meta || {}, { unit: p.unit, n: p.arts.length, checked: Date.now() });
+  LAWC.set(d.id, p.arts); return lawDB.put({ id: d.id, arts: p.arts });
+}
+const artsSig = arts => { const s = arts.map(a => a.n + a.t + a.body).join('|'); let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) + ':' + arts.length; };
+// проверка редакции: загружаем документ по сохранённой ссылке и сравниваем с библиотекой
+async function lawCheckUpdate(d) {
+  toast('Проверяю редакцию на сайте…');
+  try {
+    await lawLoad();
+    const txt = await lawFromUrl(d.url, () => {}), p = lawParse(txt);
+    if (!p.arts.length) throw new Error('на странице не нашлось статей');
+    d.checked = Date.now(); save();
+    const same = artsSig(p.arts) === artsSig(lawArts(d.id)) && (!p.rev || p.rev === d.rev);
+    if (same) { toast('Редакция актуальна' + (d.rev ? ': от ' + d.rev.split('-').reverse().join('.') : '')); if (UI.view === 'law') render(); return; }
+    UI.lawUpd = { id: d.id, p };
+    toast(`На сайте другая редакция${p.rev ? ' — от ' + p.rev.split('-').reverse().join('.') : ''}: ${p.arts.length} ${p.unit === 'п' ? plural(p.arts.length, ['пункт', 'пункта', 'пунктов']) : plural(p.arts.length, ['статья', 'статьи', 'статей'])}`, false, { act: 'lawUpdApply', id: d.id, label: 'Обновить' });
+  } catch (e) { toast('Не удалось проверить: ' + e.message, false, { act: 'lawOpenSite', id: d.id, label: 'Открыть сайт' }); }
+}
+Object.assign(ACT, {
+  lawUrlGo: async () => {
+    const inp = $('#lurl'), url = inp && inp.value.trim(); if (!url) return toast('Вставьте ссылку на документ');
+    const st = $('#lurlst'), go = $('[data-act=lawUrlGo]'); go.disabled = true; $('#lurlstop').hidden = false;
+    try {
+      const txt = await lawFromUrl(url, (m, f) => { st.innerHTML = esc(m) + (f != null ? `<span class="lbar"><i style="width:${Math.round(f * 100)}%"></i></span>` : ''); });
+      UI.form.fullText = txt; UI.form.srcUrl = url; $('#ltext').value = txt.slice(0, 200000) + (txt.length > 200000 ? '\n…' : '');
+      const p = lawParse(txt); st.textContent = p.arts.length ? 'Загружено. Проверьте название и сохраните.' : 'Страница загружена, но статей в ней не найдено. Возможно, сайт показывает текст только после входа — сохраните документ файлом.';
+      lawPreview(p); if ($('#lp-url') && !$('#lp-url').value) $('#lp-url').value = url;
+    } catch (e) { st.innerHTML = `<span style="color:var(--hi)">Не получилось: ${esc(e.message)}</span>`; }
+    finally { go.disabled = false; if ($('#lurlstop')) $('#lurlstop').hidden = true; }
+  },
+  lawUrlStop: () => { LDL.stop = true; },
+  lawUpdApply: b => { const u = UI.lawUpd, d = u && lawDoc(u.id); if (!d) return; lawApplyReplace(d, u.p, { rev: u.p.rev || d.rev }).then(() => { save(); render(); toast('Документ обновлён до новой редакции'); }); },
+  lawOpenSite: b => { const d = lawDoc(b.dataset.id); if (d && d.url) openExternal(d.url); },
+  lawReload: b => { const d = lawDoc(b.dataset.doc); if (!d || !d.url) return toast('В свойствах документа нет ссылки'); closeModal(); lawCheckUpdate(d); }
+});

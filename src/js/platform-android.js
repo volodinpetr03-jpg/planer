@@ -297,6 +297,15 @@
         return { status: r.status, text: typeof r.data === 'string' ? r.data : JSON.stringify(r.data) };
       } catch (e) { return { status: 0, text: '', error: /timeout/i.test(String(e && e.message)) ? 'timeout' : String((e && e.message) || e) }; }
     },
+    netGet: async url => {
+      let u; try { u = new URL(String(url)); } catch (e) { return { status: 0, error: 'неверная ссылка' }; }
+      if (!/^https?:$/.test(u.protocol)) return { status: 0, error: 'такие адреса не загружаются' };
+      try {
+        const r = await Http.request({ url: u.href, method: 'GET', responseType: 'arraybuffer', connectTimeout: 30000, readTimeout: 60000, headers: { 'Accept-Language': 'ru-RU,ru;q=0.9', 'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36' } });
+        const h = r.headers || {}, ct = h['Content-Type'] || h['content-type'] || '';
+        return { status: r.status, ct, url: r.url || u.href, b64: typeof r.data === 'string' ? r.data : '' };
+      } catch (e) { return { status: 0, error: String((e && e.message) || e) }; }
+    },
     docSave: async o => {
       const path = String(o.name || 'Документ').replace(/[\\/:*?"<>|]+/g, '_') + '.' + (o.ext || 'docx');
       const w = await FS.writeFile({ path, data: o.b64, directory: 'CACHE' });

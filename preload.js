@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
     lockUi: () => ipcRenderer.send('lock:ui')
   },
   ai: req => ipcRenderer.invoke('ai-chat', req),
+  netGet: url => ipcRenderer.invoke('net-get', url),
   docPdf: o => ipcRenderer.invoke('doc-pdf', o),
   docSave: o => ipcRenderer.invoke('doc-save', o),
   files: {
