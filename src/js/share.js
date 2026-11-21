@@ -21,7 +21,7 @@ const ydj = r => { try { return JSON.parse((r && r.text) || '{}'); } catch (e) {
 function ydErr(r) {
   const j = ydj(r), d = j.description || j.message || j.error_description || j.error || (r && r.error) || '';
   if (!r || r.status === 0) return 'Нет связи с Яндекс Диском' + (d ? ' (' + d + ')' : '') + '. Проверьте интернет.';
-  if (r.status === 401) return 'Яндекс не принял вход — войдите в Яндекс заново (Настройки → Совместная работа).';
+  if (r.status === 401) return 'Яндекс не принял вход — войдите в Яндекс заново в настройках («Мои устройства» или «Совместная работа»).';
   if (r.status === 403) return 'Яндекс Диск запретил доступ: у приложения нет прав на Диск или папка не открыта вам.';
   if (r.status === 404) return 'Папка не найдена на Яндекс Диске — возможно, её переименовали или закрыли доступ.';
   if (r.status === 507) return 'На Яндекс Диске закончилось место (место общее с Яндекс Почтой).';
@@ -232,6 +232,7 @@ async function ydGotToken(token) {
   const prev = D.share || {};
   D.share = { ...(prev.prov === 'yd' ? prev : { me: prev.me }), prov: 'yd', token, login: (j.user && (j.user.display_name || j.user.login)) || 'Яндекс', space: prev.prov === 'yd' ? prev.space : null };
   if (prev.prov !== 'yd') { delete D.share.folder; delete D.share.key; }
+  if (D.sync && D.sync.on) { D.sync.token = token; D.sync.login = D.share.login; if (typeof PS === 'object') PS.err = null; }
   YDL.err = ''; YDL.folders = null; save(); toast('Вход в Яндекс выполнен'); drawSettings(); ydFolders();
 }
 async function ydFolders() {
@@ -277,17 +278,10 @@ async function shareConnect() {
 }
 const ydWeb = f => 'https://disk.yandex.ru/client/disk/' + encodeURIComponent(String(f || '').replace(/^disk:\//, ''));
 // ---------- раздел настроек ----------
-async function shareTab() {
-  const S = SH();
-  if (!hasApi || !window.api.ydisk) return '<p class="hint">Совместная работа доступна в программе для Windows и на телефоне Android.</p>';
-  const intro = `<div class="secbox">${ic('users')}<div><b>Общие проекты через Яндекс Диск</b><span>Выбранные проекты видят и меняют все участники. Личные задачи, бюджет и остальное остаются только у вас. Всё, что лежит на Диске, зашифровано паролем пространства — Яндекс видит только набор байтов.</span></div></div>`;
-  const old = S && S.folder && S.prov !== 'yd' ? `<p class="hint warn">Прежний способ (папка Google Диска и FolderSync) больше не используется. Подключитесь через Яндекс Диск — ваши общие проекты сохранятся и выгрузятся в новую папку.</p>` : '';
-  if (!shareOn()) {
-    if (!S || S.prov !== 'yd' || !S.token) {
-      // шаг 1: вход
-      const c = YDL.code;
-      return `${intro}${old}
-      <h3 class="shh3">1. Войдите в Яндекс</h3>
+// блок входа в Яндекс — общий для «Совместной работы» и «Моих устройств»
+function ydLoginHtml() {
+  const c = YDL.code;
+  return `
       ${YD_CLIENT ? '' : `<details class="shcid" ${ydClient() ? '' : 'open'}><summary>ClientID приложения ${ydClient() ? '· указан' : '— нужен один раз'}</summary>
         <ol class="shsteps"><li>Откройте <a href="https://oauth.yandex.ru/client/new" data-act="shExt" data-v="https://oauth.yandex.ru/client/new">oauth.yandex.ru → «Создать приложение»</a> и войдите своим Яндекс ID.</li>
         <li>Название — «Планер». Платформа — <b>«Веб-сервисы»</b>, Redirect URI — <code>https://oauth.yandex.ru/verification_code</code>.</li>
@@ -305,6 +299,17 @@ async function shareTab() {
         <label class="f"><span>Токен</span><input class="in" id="yd-token" type="password" autocomplete="off" placeholder="y0_…"></label>
         <div><button class="btn" data-act="ydTokenGo">Войти с токеном</button></div></details>
       <p class="hint warn" id="sh-err">${esc(YDL.err)}</p>`;
+}
+async function shareTab() {
+  const S = SH();
+  if (!hasApi || !window.api.ydisk) return '<p class="hint">Совместная работа доступна в программе для Windows и на телефоне Android.</p>';
+  const intro = `<div class="secbox">${ic('users')}<div><b>Общие проекты через Яндекс Диск</b><span>Выбранные проекты видят и меняют все участники. Личные задачи, бюджет и остальное остаются только у вас. Всё, что лежит на Диске, зашифровано паролем пространства — Яндекс видит только набор байтов.</span></div></div>`;
+  const old = S && S.folder && S.prov !== 'yd' ? `<p class="hint warn">Прежний способ (папка Google Диска и FolderSync) больше не используется. Подключитесь через Яндекс Диск — ваши общие проекты сохранятся и выгрузятся в новую папку.</p>` : '';
+  if (!shareOn()) {
+    if (!S || S.prov !== 'yd' || !S.token) {
+      // шаг 1: вход
+      return `${intro}${old}
+      <h3 class="shh3">1. Войдите в Яндекс</h3>${ydLoginHtml()}`;
     }
     // шаг 2: папка, имя, пароль
     if (!YDL.folders) setTimeout(ydFolders, 0);

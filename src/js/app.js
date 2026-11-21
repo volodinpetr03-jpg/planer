@@ -380,7 +380,7 @@ function startApp(d) {
   let tourSeen = false; try { tourSeen = localStorage.getItem('planer-tour-done') === '1'; } catch (e) {}
   if (!fresh) D.settings.tourDone = true;
   if (fresh && !tourSeen && !D.settings.tourDone && !MOB()) setTimeout(tourStart, 800);
-  shareStart();
+  shareStart(); psStart();
   if (hasApi) {
     window.api.on('open-task', id => { if (UI.locked) return; closeModal(); openTaskForm(id); });
     window.api.on('new-task', () => { if (UI.locked) return; closeModal(); openTaskForm(null, taskPreset()); });

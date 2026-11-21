@@ -634,6 +634,7 @@ mark{background:color-mix(in srgb,var(--mid) 40%,transparent);color:inherit;bord
 .secbox.on{background:color-mix(in srgb,var(--ok) 10%,var(--card2));border-color:color-mix(in srgb,var(--ok) 40%,var(--line2))}
 .secbox.on>.ic{color:var(--ok)}
 .secbox div{flex:1;display:grid}.secbox span{color:var(--mute);font-size:.9rem}
+@media (max-width:600px){.secbox{flex-wrap:wrap}.secbox div{min-width:12rem}.secbox>.btn{flex:1 1 100%;justify-content:center}}
 /* настройки: вкладки слева */
 .tabs button{flex:none}
 .setbox{width:min(64rem,100%)}

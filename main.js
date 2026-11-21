@@ -464,8 +464,10 @@ ipcMain.handle('ydisk', async (event, req) => {
     const auth = { Authorization: 'OAuth ' + token, Accept: 'application/json', 'User-Agent': ua };
     if (req.op === 'info') return ydFetch(YD_API + '/', { headers: auth });
     const p = encodeURIComponent(ydPath(req.path));
-    if (req.op === 'list') return ydFetch(`${YD_API}/resources?path=${p}&limit=1000&fields=name,type,_embedded.items.name,_embedded.items.type,_embedded.items.modified,_embedded.items.size,_embedded.items.share`, { headers: auth });
+    if (req.op === 'list') return ydFetch(`${YD_API}/resources?path=${p}&limit=1000&fields=name,type,_embedded.items.name,_embedded.items.type,_embedded.items.modified,_embedded.items.size,_embedded.items.md5,_embedded.items.share`, { headers: auth });
     if (req.op === 'mkdir') return ydFetch(`${YD_API}/resources?path=${p}`, { method: 'PUT', headers: auth });
+    if (req.op === 'del' && !String(req.path).startsWith('disk:/Планер — мои данные/')) return { status: 400, text: '{"error":"удалять можно только файлы синхронизации"}' };
+    if (req.op === 'del') return ydFetch(`${YD_API}/resources?path=${p}&permanently=true`, { method: 'DELETE', headers: auth });
     if (req.op === 'read') {
       const m = await ydFetch(`${YD_API}/resources/download?path=${p}`, { headers: auth }); if (m.status !== 200) return m;
       const href = JSON.parse(m.text).href; if (!ydHost(href)) return { status: 0, error: 'неожиданный адрес скачивания' };
