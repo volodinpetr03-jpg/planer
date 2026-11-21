@@ -176,9 +176,27 @@
     return out.sort((a, b) => a.at - b.at).slice(0, 150);
   }
   function scheduleSoon() { clearTimeout(schedT); schedT = setTimeout(schedule, 1500); }
+  // ---------- виджет «Сегодня» на главном экране ----------
+  let wSig = '';
+  function widgetPush(d, locked) {
+    try {
+      if (!d || !Array.isArray(d.tasks)) return;
+      const n0 = new Date(), td = `${n0.getFullYear()}-${pad2(n0.getMonth() + 1)}-${pad2(n0.getDate())}`, done = new Set((d.columns || []).filter(c => c.done).map(c => c.id));
+      const meId = d.share && d.share.me && d.share.me.id;
+      const L = d.tasks.filter(t => !t.archived && t.date && (t.date === td || (t.date < td && !done.has(t.col))) && !(meId && t.who && t.who !== meId));
+      const isD = t => done.has(t.col), open = L.filter(t => !isD(t)).sort((a, b) => (a.date < td ? 0 : 1) - (b.date < td ? 0 : 1) || (a.time || '99').localeCompare(b.time || '99'));
+      const fin = L.filter(isD), items = open.concat(fin).slice(0, 6).map(t => ({ t: String(t.title || '').slice(0, 80), time: t.date < td ? 'просрочено' : (t.time || ''), done: isD(t), over: t.date < td && !isD(t) }));
+      const MGR = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+      const o = locked ? { date: td, locked: true, left: open.length, title: 'Сегодня' } : { date: td, title: `Сегодня, ${n0.getDate()} ${MGR[n0.getMonth()]}`, left: open.length, done: fin.length, items, more: Math.max(0, L.length - items.length) };
+      const json = JSON.stringify(o); if (json === wSig) return; wSig = json;
+      PF.widgetSet({ json }).catch(() => {});
+    } catch (e) { console.warn('widget', e); }
+  }
+  async function widgetTake() { try { const r = await PF.widgetTake(); if (r && r.newTask) setTimeout(() => emit('new-task'), 400); } catch (e) {} }
   async function schedule() {
     try {
       const locked = !!(await readLock());
+      widgetPush(data, locked);
       const list = upcoming(data).map(it => locked ? { ...it, title: 'Планер: напоминание', body: 'Откройте Планер, чтобы увидеть подробности' } : it);
       const sig = JSON.stringify(list.map(i => [i.key, i.title, i.body]));
       if (sig === lastSig) return;
@@ -232,7 +250,8 @@
 
   // ---------- системные события: «Назад», свернули, вернулись ----------
   AppP.addListener('backButton', () => emit('back')).catch(() => {});
-  AppP.addListener('appStateChange', s => { active = !!s.isActive; emit(s.isActive ? 'resume' : 'pause'); if (!s.isActive) schedule(); }).catch(() => {});
+  AppP.addListener('appStateChange', s => { active = !!s.isActive; emit(s.isActive ? 'resume' : 'pause'); if (!s.isActive) schedule(); else { widgetTake(); wSig = ''; scheduleSoon(); } }).catch(() => {});
+  setTimeout(widgetTake, 2500);
 
   // ---------- выбор и сохранение файлов ----------
   const pickFile = accept => new Promise(res => {

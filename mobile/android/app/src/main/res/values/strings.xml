@@ -4,4 +4,5 @@
     <string name="title_activity_main">Планер</string>
     <string name="package_name">local.d.planer</string>
     <string name="custom_url_scheme">local.d.planer</string>
+    <string name="widget_desc">Задачи на сегодня и просроченные</string>
 </resources>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/w_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="Сегодня"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/w_sub"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:text=""
+            android:textColor="#9AA3B5"
+            android:textSize="13sp" />
+
+        <ImageView
+            android:id="@+id/w_add"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@drawable/widget_btn"
+            android:contentDescription="Новая задача"
+            android:padding="6dp"
+            android:src="@drawable/widget_plus" />
+    </LinearLayout>
+
+    <TextView android:id="@+id/w_r0" style="@style/WidgetRow" />
+    <TextView android:id="@+id/w_r1" style="@style/WidgetRow" />
+    <TextView android:id="@+id/w_r2" style="@style/WidgetRow" />
+    <TextView android:id="@+id/w_r3" style="@style/WidgetRow" />
+    <TextView android:id="@+id/w_r4" style="@style/WidgetRow" />
+    <TextView android:id="@+id/w_r5" style="@style/WidgetRow" />
+
+    <TextView
+        android:id="@+id/w_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Откройте Планер — здесь появятся задачи на сегодня"
+        android:textColor="#9AA3B5"
+        android:textSize="13sp" />
+</LinearLayout>
