@@ -171,7 +171,7 @@ function consultView() {
         <div class="fa"><button class="btn sm" data-act="lawOpen" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('ext')} Открыть статью</button><button class="btn sm" data-act="lawMark" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('bookmark')} ${markOf(it.d.id, it.a.id) ? 'В закладках' : 'В закладки'}</button><button class="btn sm" data-act="lawTask" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('link')} В задачу</button><button class="btn sm pri" data-act="csDoc" data-doc="${it.d.id}" data-art="${it.a.id}">${ic('edit')} Составить документ</button></div></div>`).join('')}</div>`
         : `<div class="empty">В библиотеке не нашлось подходящих статей. Попробуйте другие слова${R.ai ? '' : ' или включите помощника — он подскажет юридические термины'}.</div>`}`;
   } else body = `<p class="hint">Опишите ситуацию своими словами — Планер найдёт подходящие статьи в вашей библиотеке и выделит главное.${can ? ' Помощник ответит коротко и сошлётся на статьи.' : ''}</p>`;
-  return `<div class="lmain cwrap" id="lmain"><div class="cq"><form class="cqbox" id="csform"><textarea id="cq" rows="2" placeholder="Например: сосед хранит мебель на лестничной площадке — куда жаловаться и что ему грозит?">${esc(CS.q)}</textarea><button class="btn pri" ${CS.busy ? 'disabled' : ''}>${ic('search')} Найти</button></form><div class="cmodes">${modes}</div></div><div class="cres">${body}</div></div>`;
+  return `<div class="lmain cwrap" id="lmain"><div class="cq"><form class="cqbox" id="csform"><textarea id="cq" rows="2" placeholder="Например: сосед хранит мебель на лестничной площадке — куда жаловаться и что ему грозит?">${esc(CS.q)}</textarea><div class="cqb"><button type="button" class="btn ghost" data-act="csClear" title="Очистить вопрос и результаты">${ic('x')} Очистить</button><button class="btn pri" ${CS.busy ? 'disabled' : ''}>${ic('search')} Найти</button></div></form><div class="cmodes">${modes}</div></div><div class="cres">${body}</div></div>`;
 }
 
 // ---------- документы ----------
@@ -280,6 +280,7 @@ const dtPreview = () => { clearTimeout(dtT); dtT = setTimeout(() => { const p = 
 const dtBasisDraw = () => { if (UI.view !== 'law' || LF.mode !== 'docs') return; const f = $('.tf'), y = f ? f.scrollTop : 0, s = $('#main .split'), sy = s ? s.scrollTop : 0; render(); if ($('.tf')) $('.tf').scrollTop = y; if ($('#main .split')) $('#main .split').scrollTop = sy; };
 Object.assign(ACT, {
   lawMode: b => { LF.mode = b.dataset.v; render(); },
+  csClear: () => { CS.q = ''; CS.res = null; render(); setTimeout(() => $('#cq') && $('#cq').focus(), 30); },
   csMode: b => { if (b.dataset.v === 'ai' && !aiReady()) { return openSettings('ai'); } CS.mode = b.dataset.v; render(); },
   csJump: b => { const el = $('#cs-' + b.dataset.v); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1300); } },
   csDoc: b => {

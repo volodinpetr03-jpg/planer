@@ -928,3 +928,4 @@ body.mob .a4 h1,body.mob .a4 h2{font-size:9.5px}
 .lbar{display:block;height:.35rem;background:var(--card2);border-radius:99px;overflow:hidden;margin-top:.35rem}.lbar i{display:block;height:100%;background:var(--acc)}
 body.mob .lurl{flex-wrap:wrap}body.mob .lurl .btn{flex:1}
 [hidden]{display:none!important}
+.cqb{display:flex;gap:.4rem;align-items:center}body.mob .cqb{justify-content:flex-end}

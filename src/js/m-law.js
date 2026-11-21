@@ -48,15 +48,16 @@ function lawNorm(text) {
 function lawMeta(lines) {
   const head = lines.slice(0, 40).join('\n');
   let title = '', short = '', rev = '';
-  const r = head.match(/\(ред\.?\s*от\s*(\d{2})\.(\d{2})\.(\d{4})/i) || head.match(/редакци[яи]\s+от\s+(\d{2})\.(\d{2})\.(\d{4})/i);
-  if (r) rev = `${r[3]}-${r[2]}-${r[1]}`;
-  const fz = head.match(/N\s*(\d+-ФК?З)/i); if (fz) short = fz[1].toUpperCase();
+  // редакция — самая поздняя дата «ред. от …» / «Редакция от …» в начале документа
+  const revs = [...head.matchAll(/(?:\(\s*ред\.?|редакци[яи])\s*от\s*(\d{2})\.(\d{2})\.(\d{4})/gi)].map(m => `${m[3]}-${m[2]}-${m[1]}`).sort();
+  if (revs.length) rev = revs[revs.length - 1];
+  const fz = head.match(/[N№]\s*(\d+-ФК?З)/i); if (fz) short = fz[1].toUpperCase();
   for (const [rx, s] of SHORTS) if (rx.test(head)) { short = s; break; }
   const q = head.match(/[«"]([^»"\n]{6,200})[»"]/); // название в кавычках
   const kod = lines.slice(0, 40).find(l => /^(Кодекс|Конституция|Гражданский|Трудовой|Уголовный|Налоговый|Жилищный|Земельный|Семейный|Бюджетный|Лесной|Водный|Градостроительный|Воздушный)\b.*/i.test(l) && l.length < 160);
   title = kod || (q && q[1]) || '';
   if (!title) { const big = lines.slice(0, 15).find(l => l.length > 12 && l.length < 200 && l === l.toUpperCase() && /[А-ЯЁ]{4}/.test(l) && !/^(РОССИЙСКАЯ ФЕДЕРАЦИЯ|ФЕДЕРАЛЬНЫЙ ЗАКОН|ПРАВИТЕЛЬСТВО|ПОСТАНОВЛЕНИЕ|ПРИКАЗ|УКАЗ)/.test(l)); if (big) title = big.charAt(0) + big.slice(1).toLowerCase(); }
-  if (!short) { const pn = head.match(/(Постановлени[ея]|Приказ|Указ|Распоряжени[ея])[\s\S]{0,140}?N\s*([\dА-Яа-яA-Za-z/\-]+)/i); if (pn) { const k = pn[1].toLowerCase(); short = (k.startsWith('пост') ? 'Пост.' : k.startsWith('расп') ? 'Расп.' : k.startsWith('приказ') ? 'Приказ' : 'Указ') + ' N ' + pn[2]; } }
+  if (!short) { const pn = head.match(/(Постановлени[ея]|Приказ|Указ|Распоряжени[ея])[\s\S]{0,140}?[N№]\s*([\dА-Яа-яA-Za-z/\-]+)/i); if (pn) { const k = pn[1].toLowerCase(); short = (k.startsWith('пост') ? 'Пост.' : k.startsWith('расп') ? 'Расп.' : k.startsWith('приказ') ? 'Приказ' : 'Указ') + ' N ' + pn[2]; } }
   return { title: title.replace(/\s+/g, ' ').replace(/российской федерации/gi, 'Российской Федерации').trim(), short, rev };
 }
 function lawParse(text) {
@@ -446,7 +447,10 @@ function decodeHtml(bytes, ct) {
 // официальный портал: ссылку на просмотр документа превращаем в ссылку на его текст
 function lawUrlFix(url) {
   url = String(url || '').trim(); if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
-  try { const u = new URL(url); if (/(^|\.)pravo\.gov\.ru$/.test(u.hostname) && !/^publication\./.test(u.hostname)) { const nd = u.searchParams.get('nd') || (u.search.match(/nd=(\d+)/) || [])[1]; if (nd) return `http://pravo.gov.ru/proxy/ips/?docbody=&nd=${nd}`; } } catch (e) {}
+  try { const u = new URL(url);
+    // новая версия «Законодательства России»: страница — приложение, текст отдаёт её же служба по «хэшу» документа
+    if (/^ips\.pravo\.gov\.ru$/.test(u.hostname)) { const h = (u.search.match(/hash=([0-9a-f]{40,})/i) || u.pathname.match(/([0-9a-f]{40,})/i) || [])[1]; if (h && !/\/api\//.test(u.pathname)) return `http://ips.pravo.gov.ru/api/ips/legislation/document?baseid=None&hash=${h}`; return url; }
+    if (/(^|\.)pravo\.gov\.ru$/.test(u.hostname) && !/^publication\./.test(u.hostname)) { const nd = u.searchParams.get('nd') || (u.search.match(/nd=(\d+)/) || [])[1]; if (nd) return `http://pravo.gov.ru/proxy/ips/?docbody=&nd=${nd}`; } } catch (e) {}
   return url;
 }
 // основной текст страницы: убираем меню и подвалы, спускаемся к блоку, где сосредоточен текст
@@ -474,19 +478,24 @@ function artLinks(doc, base) {
 const LDL = { stop: false };
 async function lawFromUrl(url, onProg) {
   const src = lawUrlFix(url); onProg('Загружаю страницу…');
-  let r = await netGet(src); if (src !== url && r.bytes.length < 500) r = await netGet(url);
+  let r;
+  try { r = await netGet(src); } catch (e) { if (src === url) throw e; r = null; }
+  if (src !== url && (!r || r.bytes.length < 300)) r = await netGet(url);
   const low = r.url.toLowerCase();
   if (/pdf/.test(r.ct) || /\.pdf($|\?)/.test(low)) throw new Error('по ссылке PDF — его Планер не читает. Откройте PDF, выделите весь текст и вставьте в поле ниже');
   if (/officedocument\.wordprocessingml|\.docx($|\?)/.test(r.ct + ' ' + low)) return docxText(r.bytes);
   if (/rtf/.test(r.ct) || /\.rtf($|\?)/.test(low)) return rtfText(new TextDecoder('latin1').decode(r.bytes));
-  const html = decodeHtml(r.bytes, r.ct);
-  if (!/<(html|body|p|div)/i.test(html)) return html; // обычный текст
+  let html = decodeHtml(r.bytes, r.ct);
+  if (/json/.test(r.ct) || /^\s*[{[]/.test(html)) html = jsonDocHtml(html);
+  if (!/<(html|body|p|div|br)/i.test(html)) return html; // обычный текст
+  const tm = html.match(/<title[^>]*>([^<]{5,300})<\/title>/i), dates = tm ? [...tm[1].matchAll(/от\s+(\d{2}\.\d{2}\.\d{4})/g)] : [];
+  const revLine = dates.length > 1 ? `Редакция от ${dates[dates.length - 1][1]}\n` : '';
   const doc = new DOMParser().parseFromString(html, 'text/html'), links = artLinks(doc, r.url);
   const text = mainText(new DOMParser().parseFromString(html, 'text/html'));
   const parsed = lawParse(text), arts = links.filter(l => l.url);
   const filled = parsed.arts.filter(a => a.body.length > 30).length;
-  if (filled >= Math.max(3, arts.length * 0.5)) return text;
-  if (arts.length < 3) return text;
+  if (filled >= Math.max(3, arts.length * 0.5)) return revLine + text;
+  if (arts.length < 3) return revLine + text;
   // на странице только оглавление — загружаем статьи по одной
   const head = text.split('\n'); const cut = head.findIndex(l => RX_ART.test(l) || RX_CH.test(l)); const parts = [(cut > 0 ? head.slice(0, cut) : head.slice(0, 30)).join('\n')];
   LDL.stop = false; let i = 0, fails = 0;
@@ -502,6 +511,15 @@ async function lawFromUrl(url, onProg) {
     await new Promise(res => setTimeout(res, 150));
   }
   return parts.join('\n');
+}
+// ответ службы в JSON: берём самую длинную строку — это текст документа (HTML или обычный)
+function jsonDocHtml(txt) {
+  let j; try { j = JSON.parse(txt); } catch (e) { return txt; }
+  let best = '', title = '';
+  const walk = (o, k) => { if (typeof o === 'string') { if (o.length > best.length) best = o; if (/^(title|name|caption|header)$/i.test(k || '') && o.length < 300) title = title || o; } else if (o && typeof o === 'object') for (const kk in o) walk(o[kk], kk); };
+  walk(j);
+  if (!/<\w+[^>]*>/.test(best)) best = best.split('\n').map(l => `<p>${esc(l)}</p>`).join('');
+  return `<html><head><title>${esc(title)}</title></head><body>${best}</body></html>`;
 }
 function lawApplyReplace(d, p, meta) {
   const old = lawArts(d.id), byN = new Map(p.arts.map(a => [a.n, a])), remap = {};

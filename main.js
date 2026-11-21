@@ -340,7 +340,7 @@ ipcMain.handle('net-get', async (event, url) => {
   if (!/^https?:$/.test(u.protocol) || /^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[|0\.)/i.test(u.hostname)) return { status: 0, error: 'такие адреса не загружаются' };
   const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), 45000);
   try {
-    const res = await fetch(u.href, { signal: ctrl.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9' } });
+    const res = await fetch(u.href, { signal: ctrl.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'ru-RU,ru;q=0.9', 'Referer': u.origin + '/' } });
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length > 25 * 1024 * 1024) return { status: 0, error: 'файл слишком большой' };
     return { status: res.status, ct: res.headers.get('content-type') || '', url: res.url, b64: buf.toString('base64') };
