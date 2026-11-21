@@ -107,7 +107,7 @@
   }
 
   // ---------- напоминания: системные уведомления, приходят и при закрытом приложении ----------
-  const CH = 'planer-remind';
+  const CH = 'planer-remind', FOCUS_NID = 1999999999;
   let chReady = null, schedT = null, lastSig = '';
   function ensureChannel() {
     if (!chReady) chReady = (async () => {
@@ -170,7 +170,7 @@
       if (!list.length && !lastSig) { lastSig = sig; return; }
       if (!(await ensureChannel())) return;
       const pend = await Notif.getPending();
-      if (pend.notifications.length) await Notif.cancel({ notifications: pend.notifications.map(n => ({ id: n.id })) });
+      const old = pend.notifications.filter(n => n.id !== FOCUS_NID); if (old.length) await Notif.cancel({ notifications: old.map(n => ({ id: n.id })) });
       if (list.length) await Notif.schedule({ notifications: list.map(it => ({ id: nid(it.key), title: it.title, body: it.body, largeBody: it.body, channelId: CH, smallIcon: 'ic_stat_planer', iconColor: '#4D8DFF', schedule: { at: new Date(it.at), allowWhileIdle: true }, extra: { kind: it.kind, id: it.id } })) });
       lastSig = sig;
     } catch (e) { log('Не удалось запланировать напоминания', e); }
@@ -178,7 +178,7 @@
   Notif.addListener('localNotificationActionPerformed', a => {
     const ex = (a && a.notification && a.notification.extra) || {};
     if (uiLocked) return;
-    setTimeout(() => emit(ex.kind === 'pay' ? 'open-pay' : ex.kind === 'date' ? 'reminder-date' : 'open-task', ex.id), 300);
+    if (ex.kind !== 'focus') setTimeout(() => emit(ex.kind === 'pay' ? 'open-pay' : ex.kind === 'date' ? 'reminder-date' : 'open-task', ex.id), 300);
   }).catch(() => {});
   // пока приложение открыто — окно напоминания внутри программы, как на компьютере
   let active = true;
@@ -331,6 +331,12 @@
         return { status: r.status, text: typeof r.data === 'string' ? r.data : JSON.stringify(r.data) };
       } catch (e) { return { status: 0, text: '', error: /timeout/i.test(String(e && e.message)) ? 'timeout' : String((e && e.message) || e) }; }
     },
+    focusAlarm: async o => {
+      try { if (!(await ensureChannel())) return; await Notif.cancel({ notifications: [{ id: FOCUS_NID }] }).catch(() => {});
+        await Notif.schedule({ notifications: [{ id: FOCUS_NID, title: String(o.title || 'Фокус'), body: String(o.body || ''), channelId: CH, smallIcon: 'ic_stat_planer', iconColor: '#4D8DFF', schedule: { at: new Date(o.at), allowWhileIdle: true }, extra: { kind: 'focus' } }] });
+      } catch (e) { log('Таймер: уведомление не запланировано', e); }
+    },
+    focusCancel: async () => { try { await Notif.cancel({ notifications: [{ id: FOCUS_NID }] }); } catch (e) {} },
     notify: async o => {
       try { if (!(await ensureChannel())) return; await Notif.schedule({ notifications: [{ id: nid('n' + Date.now() + Math.random()), title: String(o.title || 'Планер'), body: String(o.body || ''), largeBody: String(o.body || ''), channelId: CH, smallIcon: 'ic_stat_planer', iconColor: '#4D8DFF', schedule: { at: new Date(Date.now() + 800), allowWhileIdle: true }, extra: { kind: 'task', id: o.task || '' } }] }); } catch (e) {}
     },

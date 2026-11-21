@@ -236,6 +236,13 @@ function checkReminders() {
 }
 
 // ---------- IPC ----------
+let focusTimer = null;
+ipcMain.on('focus:alarm', (e, o) => {
+  clearTimeout(focusTimer); focusTimer = null; if (!o || !o.at) return;
+  const ms = Math.max(0, Math.min(6 * 3600e3, Number(o.at) - Date.now()));
+  focusTimer = setTimeout(() => { focusTimer = null; if (uiLocked) notify('Планер', 'Отрезок таймера завершён', () => showWindow()); else notify(String(o.title || 'Фокус').slice(0, 120), String(o.body || '').slice(0, 300), () => showWindow()); }, ms);
+});
+ipcMain.on('focus:cancel', () => { clearTimeout(focusTimer); focusTimer = null; });
 ipcMain.on('notify', (e, o) => { if (!o) return; notify(String(o.title || 'Планер').slice(0, 120), String(o.body || '').slice(0, 300), () => { showWindow(); if (o.task) win.webContents.send('open-task', String(o.task)); }); });
 function resolveLoaded(raw) {
   if (!isEnc(raw)) return raw;

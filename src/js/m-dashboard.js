@@ -20,7 +20,7 @@ registerModule({
   bar() {
     const x = new Date();
     return `<h1>${greet()}</h1><div class="stats"><span>${x.getDate()} ${MG[x.getMonth()]} ${x.getFullYear()}, ${WSL[x.getDay()]}</span></div><span class="spacer"></span>
-      ${modOn('board') ? `<button class="btn" data-act="newTask">${ic('plus')} Задача</button>` : ''}${modOn('budget') ? `<button class="btn" data-act="newTx" data-v="expense">${ic('coin')} Расход</button>` : ''}`;
+      <button class="btn" data-act="focOpen" title="Фокус-таймер (помодоро)">${ic('timer')} Фокус</button>${modOn('board') ? `<button class="btn" data-act="newTask">${ic('plus')} Задача</button>` : ''}${modOn('budget') ? `<button class="btn" data-act="newTx" data-v="expense">${ic('coin')} Расход</button>` : ''}`;
   },
   render() {
     const td = today(), L = live(), tod = L.filter(t => t.date === td), todD = tod.filter(isDone).length, over = L.filter(t => !isDone(t) && t.date && t.date < td);
@@ -33,7 +33,7 @@ registerModule({
     const focusHtml = modOn('board') && SM().scoring ? `<section class="pan focus">${F ? `<div class="ph2"><h2>${ic('star')} Главная задача</h2><small>оценка ${F.s}</small><span class="spacer"></span>${rank.length > 1 ? `<button class="btn sm ghost" data-act="focusSkip" title="Показать следующую по важности">Другая</button>` : ''}</div>
         <div class="fmain" data-act="openTask" data-id="${F.t.id}"><b>${esc(F.t.title)}</b><span>${[F.t.date ? dueTxt(F.t) : 'без даты', projOf(F.t.project) ? projOf(F.t.project).title : ''].filter(Boolean).join(' · ')}</span></div>
         <div class="why">${F.why.map(w => `<i class="${w.v < 0 ? 'neg' : ''}">${w.v > 0 ? '+' : ''}${w.v} ${esc(w.label)}</i>`).join('')}</div>
-        <div class="fbtn"><button class="btn pri" data-act="complete" data-id="${F.t.id}">${ic('check')} Готово</button>${D.columns.findIndex(c => c.id === F.t.col) === 0 && D.columns.some((c, i) => i > 0 && !c.done) ? `<button class="btn" data-act="focusStart" data-id="${F.t.id}">${ic('play')} Начать</button>` : ''}<button class="btn ghost" data-act="openTask" data-id="${F.t.id}">Открыть</button></div>
+        <div class="fbtn"><button class="btn pri" data-act="complete" data-id="${F.t.id}">${ic('check')} Готово</button><button class="btn" data-act="focTask" data-id="${F.t.id}">${ic('timer')} Фокус ${FS().work} мин</button>${D.columns.findIndex(c => c.id === F.t.col) === 0 && D.columns.some((c, i) => i > 0 && !c.done) ? `<button class="btn" data-act="focusStart" data-id="${F.t.id}">${ic('play')} Начать</button>` : ''}<button class="btn ghost" data-act="openTask" data-id="${F.t.id}">Открыть</button></div>
         ${rank.length > 1 ? `<div class="fnext"><span class="hint">Дальше по важности:</span>${rank.filter((_, i) => i !== fi).slice(0, 3).map(r => `<button class="lnk" data-act="openTask" data-id="${r.t.id}">${esc(r.t.title)} <small>${r.s}</small></button>`).join('')}</div>` : ''}`
       : '<div class="ph2"><h2>' + ic('star') + ' Главная задача</h2></div><div class="empty">Открытых задач на ближайшие две недели нет</div>'}</section>` : '';
     const capHtml = `<section class="pan capk"><div class="ph2"><h2>${ic('clock')} Загрузка</h2><span class="spacer"></span><button class="btn sm ghost" data-act="settings" data-v="smart">Ёмкость</button></div>

@@ -38,7 +38,7 @@ function taskSheet(id) {
     <div class="shg"><button data-act="shOpen" data-id="${id}">${ic('edit')}<span>Открыть</span></button><button data-act="shDone" data-id="${id}">${ic('check')}<span>${dn ? 'В работу' : 'Готово'}</span></button><button data-act="shDate" data-id="${id}" data-v="${td}">${ic('clock')}<span>Сегодня</span></button><button data-act="shDate" data-id="${id}" data-v="${addDays(td, 1)}">${ic('cal')}<span>Завтра</span></button></div>
     <div class="shl"><span>Переместить в колонку</span><div class="chips">${D.columns.map(c => `<button class="chip ${c.id === t.col ? 'on' : ''}" data-act="shCol" data-id="${id}" data-v="${c.id}">${esc(c.title)}</button>`).join('')}</div></div>
     ${dn ? '' : `<div class="shl"><span>Матрица Эйзенхауэра</span><div class="chips">${MQ.map(q => `<button class="chip ${quadOf(t) === q.k ? 'on' : ''}" data-act="shQuad" data-id="${id}" data-v="${q.k}">${q.k}. ${q.t}</button>`).join('')}</div></div>`}
-    <div class="shf"><button class="btn ghost" data-act="shDate" data-id="${id}" data-v="">Убрать дату</button><span class="spacer"></span><button class="btn ghost danger" data-act="shDel" data-id="${id}">${ic('trash')} Удалить</button></div>`);
+    <div class="shf"><button class="btn ghost" data-act="shDate" data-id="${id}" data-v="">Убрать дату</button>${dn ? '' : `<button class="btn ghost" data-act="focTask" data-id="${id}">${ic('timer')} Фокус</button>`}<span class="spacer"></span><button class="btn ghost danger" data-act="shDel" data-id="${id}">${ic('trash')} Удалить</button></div>`);
 }
 function sideProj(p, dep) { return `<button class="sproj" data-act="openProject" data-id="${p.id}" style="--c:${p.color};padding-left:${dep ? .95 + dep * 1.05 : .75}rem" title="${esc(p.title)}"><i></i><span>${esc(p.title)}</span>${isShared(p) ? `<b class="shic" title="Общий проект">${ic('users')}</b>` : ''}<small>${projStats(p).pct}%</small></button>`; }
 function sideFolders(pid, dep) {
@@ -374,7 +374,7 @@ function startApp(d) {
   D = normalize(fresh ? demo() : d);
   if (fresh || old) save();
   UI.view = D.settings.startView || 'dashboard';
-  applyAppearance(); dailyRules(); render();
+  applyAppearance(); dailyRules(); render(); focResume();
   let tourSeen = false; try { tourSeen = localStorage.getItem('planer-tour-done') === '1'; } catch (e) {}
   if (!fresh) D.settings.tourDone = true;
   if (fresh && !tourSeen && !D.settings.tourDone && !MOB()) setTimeout(tourStart, 800);

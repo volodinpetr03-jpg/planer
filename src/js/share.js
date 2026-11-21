@@ -37,7 +37,7 @@ async function sOpen(k, o) { return JSON.parse(sDec.decode(await crypto.subtle.d
 
 // ---------- записи: что уходит другим участникам ----------
 // колонки и теги у каждого свои, поэтому передаются названиями; папка проекта — личная
-const T_KEYS = ['title', 'desc', 'order', 'prio', 'project', 'parent', 'postponed', 'date', 'time', 'dur', 'remind', 'rem2', 'nag', 'repeat', 'checklist', 'created', 'doneAt', 'archived', 'who', 'asg', 'laws'];
+const T_KEYS = ['title', 'desc', 'order', 'prio', 'project', 'parent', 'postponed', 'date', 'time', 'dur', 'remind', 'rem2', 'nag', 'repeat', 'checklist', 'created', 'doneAt', 'archived', 'who', 'asg', 'laws', 'spent'];
 const P_KEYS = ['title', 'color', 'desc', 'status', 'start', 'deadline', 'budget', 'created'];
 function recOfTask(t) { const r = { k: 't', id: t.id }; T_KEYS.forEach(k => r[k] = t[k] === undefined ? null : t[k]); const c = colOf(t.col); r.colName = c ? c.title : ''; r.done = isDone(t); r.tagNames = (t.tags || []).map(id => tagOf(id)).filter(Boolean).map(x => x.title).sort(); return r; }
 function recOfProj(p) { const r = { k: 'p', id: p.id }; P_KEYS.forEach(k => r[k] = p[k] === undefined ? null : p[k]); return r; }

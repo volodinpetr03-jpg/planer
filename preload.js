@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld('api', {
     hasAccess: async () => true,
     askAccess: async () => {}
   },
+  focusAlarm: o => ipcRenderer.send('focus:alarm', o),
+  focusCancel: () => ipcRenderer.send('focus:cancel'),
   on: (ch, fn) => {
     if (!['open-task', 'new-task', 'reminder', 'notified', 'open-pay', 'reminder-pay', 'reminder-date', 'lock-now'].includes(ch)) return;
     ipcRenderer.on(ch, (e, arg) => fn(arg));

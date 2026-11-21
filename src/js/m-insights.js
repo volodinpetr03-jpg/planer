@@ -76,6 +76,7 @@ function computeInsights() {
   const regM = B().regular.filter(r => r.active !== false && r.type !== 'income').reduce((a, r) => a + (r.repeat === 'week' ? r.amount * 4.345 : r.repeat === 'quarter' ? r.amount / 3 : r.repeat === 'year' ? r.amount / 12 : r.amount), 0);
   const incAvg = prev.reduce((a, m) => a + sumT(txMonth(m), 'income'), 0) / 3;
   if (regM && incAvg) out.push({ id: 'reg', sec: 'money', icon: 'repeat', title: 'Обязательные платежи', value: pct(regM / incAvg), text: `Регулярные платежи — около ${money0(regM)} в месяц, это ${pct(regM / incAvg)} от среднего дохода за 3 месяца (${money0(incAvg)}).`, basis: `${B().regular.filter(r => r.active !== false).length} активных платежей`, donut: [regM, Math.max(0, incAvg - regM)], donutL: ['Платежи', 'Остальное'] });
+  if (typeof focusInsights === 'function') out.push(...focusInsights());
   return out;
 }
 const need = (sec, id, icon, title, n, have) => ({ sec, id, icon, title, value: '—', text: `Мало данных: нужно хотя бы ${n}, сейчас ${have}. Наблюдение появится само.`, basis: '', empty: true });
@@ -85,7 +86,7 @@ registerModule({
   bar() { const n = D.tasks.filter(t => t.doneAt).length; return `<h1>Инсайты</h1><div class="stats"><span>на основе <b>${n}</b> выполненных ${plural(n, ['задачи', 'задач', 'задач'])} и <b>${B().tx.length}</b> ${plural(B().tx.length, POP)}</span></div><span class="spacer"></span><span class="hint">Только факты из ваших данных, без рекомендаций</span>`; },
   render() {
     UI.ins = computeInsights();
-    const SEC = [['tasks', 'Задачи', 'list'], ['time', 'Время и загрузка', 'clock'], ['proj', 'Проекты', 'proj'], ['money', 'Деньги', 'coin']];
+    const SEC = [['tasks', 'Задачи', 'list'], ['focus', 'Фокус', 'timer'], ['time', 'Время и загрузка', 'clock'], ['proj', 'Проекты', 'proj'], ['money', 'Деньги', 'coin']];
     const vis = (x, i) => {
       if (x.chart || x.donut || x.cap) return `<div class="chartbox"><canvas id="ins-${i}"></canvas></div>`;
       if (x.bars) { const mx = Math.max(...x.bars.map(z => Math.abs(z.v))) || 1; return `<div class="ins-bars">${x.bars.map(b => `<div><span title="${esc(b.l)}">${esc(b.l)}</span><i style="--c:${b.c};width:${Math.max(1, Math.abs(b.v) / mx * 100)}%"></i><em>${b.txt || (b.abs ? b.v : b.signed ? (b.v > 0 ? '+' : '') + pct(b.v) : pct(b.v))}</em></div>`).join('')}</div>`; }
