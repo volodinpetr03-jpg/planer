@@ -73,6 +73,7 @@ function vProject(p) {
     <section class="pan"><div class="ph2"><h2>Прогресс</h2><small>выполненные задачи</small></div><div class="chartbox sm"><canvas id="ch-pprog"></canvas></div>
       <div class="ph2" style="margin-top:1rem"><h2>Ближайшее</h2></div>${upcoming.map(t => `<div class="lrow" data-act="openTask" data-id="${t.id}" style="--c:${p.color}"><span class="dot"></span><div class="tx"><b>${esc(t.title)}</b><small>${dueTxt(t)}</small></div></div>`).join('') || '<p class="hint">Нет задач с датой впереди</p>'}</section>
   </div>
+  ${modOn('notes') ? projNotesHtml(p) : ''}
   <div class="grid2">
     <section class="pan"><div class="ph2"><h2>Деньги проекта</h2><span class="spacer"></span><button class="btn sm" data-act="newTx" data-v="expense">${ic('plus')} Расход</button></div>${tx.length ? tx.map(x => txRow(x, { noProj: true })).join('') : '<div class="empty">Расходов по проекту нет. Привяжите покупку к проекту — и она попадёт и в бюджет, и сюда.</div>'}</section>
     <section class="pan"><div class="ph2"><h2>Расходы по категориям</h2></div>${sumT(tx, 'expense') ? '<div class="chartbox"><canvas id="ch-pcat"></canvas></div>' : '<div class="empty">Нет данных</div>'}</section>
