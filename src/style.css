@@ -931,19 +931,19 @@ body.mob .lurl{flex-wrap:wrap}body.mob .lurl .btn{flex:1}
 .cqb{display:flex;gap:.4rem;align-items:center}body.mob .cqb{justify-content:flex-end}
 /* право: оглавление деревом */
 .ltbar{display:flex;gap:.3rem;margin:-.3rem 0 .4rem}
-.tg{margin:.1rem 0}
+.tn{margin:.1rem 0}
 .tgh{display:flex;align-items:baseline;gap:.5rem;width:100%;text-align:left;border:0;background:none;color:var(--ink);cursor:pointer;padding:.5rem .5rem;border-radius:.6rem;font:inherit}
 .tgh:hover{background:var(--hover)}
 .tgh em{font-style:normal;font-weight:700;white-space:nowrap;color:var(--ink)}
 .tgh span{flex:1;color:var(--ink2);font-weight:500}
 .tgh small{color:var(--mute);font-size:.8rem;font-variant-numeric:tabular-nums;background:var(--card2);border-radius:99px;padding:0 .45rem}
 .tgc{display:grid;place-items:center;align-self:center;transition:transform .15s;color:var(--mute)}.tgc .ic{width:.85rem;height:.85rem}
-.tg.open>.tgh .tgc{transform:rotate(90deg)}
+.tn.open>.tgh .tgc{transform:rotate(90deg)}
 .tgb{display:none;margin-left:.85rem;padding-left:.6rem;border-left:1.5px solid var(--line)}
-.tg.open>.tgb{display:block}
-.tg.lv0>.tgh{font-size:1.04rem}.tg.lv0>.tgh em{color:var(--acc);text-transform:none}
-.tg.lv1>.tgh em{color:var(--ink)}
-.tg.flash>.tgh{animation:flash 1.2s ease-out;border-radius:.6rem}
+.tn.open>.tgb{display:block}
+.tn.lv0>.tgh{font-size:1.04rem}.tn.lv0>.tgh em{color:var(--acc);text-transform:none}
+.tn.lv1>.tgh em{color:var(--ink)}
+.tn.flash>.tgh{animation:flash 1.2s ease-out;border-radius:.6rem}
 .lcrumb .lnk{min-height:0;font-size:inherit;font-weight:500;color:var(--mute)}.lcrumb .lnk:hover{color:var(--acc)}
 body.mob .tgb{margin-left:.4rem;padding-left:.45rem}
 .exb{display:inline-block;margin-left:.5rem;font-size:.75rem;font-weight:700;color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 45%,transparent);border-radius:99px;padding:0 .5rem;vertical-align:.1em}
@@ -951,3 +951,13 @@ body.mob .tgb{margin-left:.4rem;padding-left:.45rem}
 .fixb .ic{color:var(--acc)}.fixb s{color:var(--mute)}.fixb .lnk{min-height:0;margin-left:auto}
 mark.soft{background:color-mix(in srgb,var(--mid) 14%,transparent)}
 .lbody mark{background:color-mix(in srgb,var(--mid) 32%,transparent);color:var(--ink);border-radius:.2rem}
+/* оглавление: длинные названия глав переносятся, число статей — справа ровным столбцом */
+.tgh,.ltocl{white-space:normal}
+.tgh{align-items:flex-start}
+.tgh em{flex:none}
+.tgh span{flex:1 1 auto;min-width:0;overflow-wrap:anywhere;line-height:1.4}
+.tgh small{flex:none;margin-left:.6rem;align-self:flex-start;margin-top:.15rem}
+.tgc{align-self:flex-start;margin-top:.3rem}
+.ltocl{align-items:flex-start}
+.ltocl span{min-width:0;overflow-wrap:anywhere;line-height:1.45}
+.tgh em{min-width:5.2rem}.tn.lv0>.tgh em{min-width:6.2rem}body.mob .tgh em{min-width:4.4rem}

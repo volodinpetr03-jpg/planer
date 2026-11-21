@@ -283,7 +283,7 @@ function tocNode(d, k, lvl, many) {
   const sc = t => t && t === t.toUpperCase() && /[А-ЯЁ]{3}/.test(t) ? t.charAt(0) + t.slice(1).toLowerCase().replace(/российской федерации/g, 'Российской Федерации') : t;
   const m = k.title.match(/^(Часть|Раздел|Подраздел|Глава|§)\s*([^.\s]+)\.?\s*(.*)$/i) || k.title.match(/^()([IVXLCDM]+\.)\s*(.*)$/);
   const lab = m ? `<em>${esc((m[1] + ' ' + m[2]).trim())}</em>${m[3] ? '<span>' + esc(sc(m[3])) + '</span>' : ''}` : `<span>${esc(sc(k.title))}</span>`;
-  return `<div class="tg lv${Math.min(lvl, 3)} ${open ? 'open' : ''}" data-tk="${esc(key)}"><button class="tgh" data-act="lawGrp" data-k="${esc(key)}"><i class="tgc">${ic('caret')}</i>${lab}<small>${k.n}</small></button><div class="tgb">${k.arts.map(a => tocArt(d, a)).join('')}${k.kids.map(x => tocNode(d, x, lvl + 1, many)).join('')}</div></div>`;
+  return `<div class="tn lv${Math.min(lvl, 3)} ${open ? 'open' : ''}" data-tk="${esc(key)}"><button class="tgh" data-act="lawGrp" data-k="${esc(key)}"><i class="tgc">${ic('caret')}</i>${lab}<small>${k.n}</small></button><div class="tgb">${k.arts.map(a => tocArt(d, a)).join('')}${k.kids.map(x => tocNode(d, x, lvl + 1, many)).join('')}</div></div>`;
 }
 function lawResults() {
   const R = lawSearch(LF.q), T = R.T;
@@ -384,13 +384,13 @@ const lawChips = (t, rm) => (t.laws || []).map((l, i) => `<span class="lchip"><b
 function lawLink(doc, art) { const d = lawDoc(doc), a = lawArt(doc, art); return d && a ? { doc, art, label: artLabel(d, a) } : null; }
 
 Object.assign(ACT, {
-  lawGrp: b => { const k = b.dataset.k, el = b.closest('.tg'), on = !el.classList.contains('open'); el.classList.toggle('open', on); LF.open[k] = on; },
+  lawGrp: b => { const k = b.dataset.k, el = b.closest('.tn'), on = !el.classList.contains('open'); el.classList.toggle('open', on); LF.open[k] = on; },
   lawTreeAll: b => { const d = lawDoc(b.dataset.doc), on = b.dataset.v === '1'; if (!d) return; const walk = n => n.kids.forEach(k => { LF.open[treeKey(d, k.path)] = on; walk(k); }); walk(lawTree(lawArts(d.id))); render(); },
   lawCrumb: b => {
     const d = lawDoc(b.dataset.doc); if (!d) return; const path = b.dataset.k; closeSheet();
     if (path) { const parts = path.split(' › '); parts.forEach((_, i) => { LF.open[treeKey(d, parts.slice(0, i + 1).join(' › '))] = true; }); }
     LF.mode = 'lib'; LF.doc = d.id; LF.art = null; LF.q = ''; if (UI.view !== 'law') go('law'); else render();
-    if (path) setTimeout(() => { const el = [...document.querySelectorAll('.tg')].find(x => x.dataset.tk === treeKey(d, path)); if (el) { el.scrollIntoView({ block: 'start' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1300); } }, 30);
+    if (path) setTimeout(() => { const el = [...document.querySelectorAll('.tn')].find(x => x.dataset.tk === treeKey(d, path)); if (el) { el.scrollIntoView({ block: 'start' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1300); } }, 30);
   },
   lawTab: b => { LF.tab = b.dataset.v; render(); },
   lawDoc: b => { LF.back = null; LF.hl = null; LF.doc = b.dataset.doc; LF.art = null; LF.q = ''; LF.scrollTop = true; render(); },
