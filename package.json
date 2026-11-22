@@ -1,7 +1,7 @@
 {
   "name": "planer",
   "productName": "Планер",
-  "version": "3.23.0",
+  "version": "3.23.1",
   "description": "Планер: задачи, календарь, проекты, бюджет и умные функции",
   "main": "main.js",
   "author": "D",
