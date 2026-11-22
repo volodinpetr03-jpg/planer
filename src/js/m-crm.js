@@ -34,14 +34,16 @@ function crmList() {
   const q = lnorm(CRF.q.trim());
   return CR().filter(c => !c.archived)
     .filter(c => CRF.f === 'org' ? c.kind === 'org' : CRF.f === 'due' ? (crmDue(c) !== null && crmDue(c) <= 0) : true)
-    .filter(c => !q || lnorm([c.name, c.role, (crmOf(c.org) || {}).name, c.note, ...(c.phones || []), ...(c.emails || [])].join(' ')).includes(q))
+    .filter(c => !q || lnorm([c.name, c.role, (crmOf(c.org) || {}).name, c.note, ...(c.phones || []), ...(c.emails || [])].join(' ')).includes(q) || crmPhoneHit(c, CRF.q))
     .sort((a, b) => { const da = crmDue(a), db = crmDue(b); return (da === null ? 9999 : da) - (db === null ? 9999 : db) || a.name.localeCompare(b.name, 'ru'); });
 }
 function crmDueTag(c) {
   const n = crmDue(c); if (n === null) return '';
   return `<span class="cdue ${n < 0 ? 'over' : n === 0 ? 'now' : ''}">${n < 0 ? 'просрочено' : n === 0 ? 'сегодня' : n === 1 ? 'завтра' : (d => d.getDate() + ' ' + MGS[d.getMonth()])(pd(crmNext(c).date))}</span>`;
 }
-const crmRow = c => `<button class="crow ${CRF.open === c.id ? 'on' : ''}" data-act="crmOpen" data-id="${c.id}">${crmAva(c)}<span class="tx"><b>${esc(c.name || 'Без имени')}</b><small>${esc(crmSub(c) || (c.phones || [])[0] || '')}</small></span>${crmDueTag(c)}</button>`;
+// поиск по номеру в любом написании: 8 900…, +7 (900)…, 900 000…
+function crmPhoneHit(c, q) { const d = digitsOf(q); if (d.length < 3) return false; const alt = d[0] === '8' && d.length >= 4 ? '7' + d.slice(1) : null; return (c.phones || []).some(p => { const x = digitsOf(phoneFmt(p)); return x.includes(d) || (alt && x.startsWith(alt)) || (d.length >= 10 && x.endsWith(d.slice(-10))); }); }
+const crmRow = c => `<button class="crow ${CRF.open === c.id ? 'on' : ''}" data-act="crmOpen" data-id="${c.id}">${crmAva(c)}<span class="tx"><b>${esc(c.name || 'Без имени')}</b><small>${esc(crmSub(c) || phoneFmt((c.phones || [])[0] || ''))}</small></span>${crmDueTag(c)}</button>`;
 // ---------- карточка ----------
 function crmCard(c) {
   const org = crmOf(c.org), nx = crmNext(c), ph = (c.phones || []).filter(Boolean), em = (c.emails || []).filter(Boolean);
@@ -56,7 +58,7 @@ function crmCard(c) {
       <div class="cacts">${ph.length ? `<button class="btn" data-act="crmCall" data-v="${esc(ph[0])}" aria-label="Позвонить">${ic('phone')} <span>Позвонить</span></button>` : ''}${em.length ? `<button class="btn" data-act="crmMail" data-v="${esc(em[0])}" aria-label="Написать">${ic('mail')} <span>Написать</span></button>` : ''}
         <button class="btn pri" data-act="crmNext" data-id="${c.id}" aria-label="Связаться…">${ic('clock')} <span>Связаться…</span></button>
         <button class="ib" data-act="crmMore" data-id="${c.id}" title="Ещё" aria-label="Ещё">${ic('more')}</button></div></div>
-    <div class="cgrid">${ph.map((p, i) => field(i ? 'Ещё телефон' : 'Телефон', p, `<a href="#" data-act="crmCall" data-v="${esc(p)}">${esc(p)}</a>`)).join('')}${em.map(e => field('Почта', e, `<a href="#" data-act="crmMail" data-v="${esc(e)}">${esc(e)}</a>`)).join('')}${field('Адрес', c.addr)}${field('День рождения', bd)}${(c.tags || []).length ? `<div class="cfld"><span>Теги</span><b>${tagsHtml(c)}</b></div>` : ''}</div>
+    <div class="cgrid">${ph.map((p, i) => field(i ? 'Ещё телефон' : 'Телефон', p, `<a href="#" data-act="crmCall" data-v="${esc(p)}">${esc(phoneFmt(p))}</a>`)).join('')}${em.map(e => field('Почта', e, `<a href="#" data-act="crmMail" data-v="${esc(e)}">${esc(e)}</a>`)).join('')}${field('Адрес', c.addr)}${field('День рождения', bd)}${(c.tags || []).length ? `<div class="cfld"><span>Теги</span><b>${tagsHtml(c)}</b></div>` : ''}</div>
     ${c.note ? `<div class="cnote">${esc(c.note)}</div>` : ''}
     ${nx ? `<div class="cnext ${diff(today(), nx.date) < 0 ? 'over' : ''}">${ic('clock')}<div class="tx"><b>${diff(today(), nx.date) < 0 ? 'Просрочено: ' : ''}${esc(human(nx.date))}${nx.time ? ', ' + nx.time : ''}</b><span>${esc(nx.title.replace(/^Связаться: [^—]+—\s*/, ''))}</span></div><button class="btn sm" data-act="crmNextDone" data-id="${nx.id}">${ic('check')} Сделано</button><button class="btn sm ghost" data-act="openTask" data-id="${nx.id}">Перенести</button></div>`
       : `<div class="cnext none">${ic('clock')}<div class="tx"><b>Следующий контакт не назначен</b><span>Назначьте, когда связаться, — Планер напомнит</span></div><button class="btn sm" data-act="crmNext" data-id="${c.id}">Назначить</button></div>`}
@@ -88,8 +90,8 @@ function crmForm(id, preset) {
       <label class="f"><span>Организация</span><select class="in" id="cr-org"><option value="">—</option>${orgs.map(o => `<option value="${o.id}" ${o.id === c.org ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}<option value="+new">+ Новая организация…</option></select></label>
       <label class="f"><span>Должность</span><input class="in" id="cr-role" value="${esc(c.role)}" maxlength="80" placeholder="директор, снабжение…"></label></div>
     <label class="f crneworg" hidden><span>Название новой организации</span><input class="in" id="cr-orgnew" maxlength="160"></label>
-    <div class="row two"><label class="f"><span>Телефон</span><input class="in" id="cr-ph1" type="tel" inputmode="tel" value="${esc((c.phones || [])[0] || '')}" placeholder="+7 …"></label>
-      <label class="f"><span>Ещё телефон</span><input class="in" id="cr-ph2" type="tel" inputmode="tel" value="${esc((c.phones || [])[1] || '')}"></label></div>
+    <div class="row two"><label class="f"><span>Телефон</span><input class="in" id="cr-ph1" type="tel" inputmode="tel" data-phone value="${esc(phoneFmt((c.phones || [])[0] || ''))}" placeholder="+7 (900) 123-45-67" maxlength="40"></label>
+      <label class="f"><span>Ещё телефон</span><input class="in" id="cr-ph2" type="tel" inputmode="tel" data-phone value="${esc(phoneFmt((c.phones || [])[1] || ''))}" placeholder="+7 (900) 123-45-67" maxlength="40"></label></div>
     <div class="row two"><label class="f"><span>Почта</span><input class="in" id="cr-em" type="email" inputmode="email" value="${esc((c.emails || [])[0] || '')}"></label>
       <label class="f crp" ${c.kind === 'org' ? 'hidden' : ''}><span>День рождения</span><input class="in" id="cr-bday" type="date" value="${esc(c.bday || '')}"></label></div>
     <label class="f"><span>Адрес</span><input class="in" id="cr-addr" value="${esc(c.addr || '')}" maxlength="200"></label>
@@ -103,7 +105,9 @@ function crmForm(id, preset) {
 function crmSave() {
   const F = UI.form, c = F.c, v = id => (($('#' + id) || {}).value || '').trim();
   c.name = v('cr-name'); if (!c.name) { $('#cr-name').focus(); return toast(c.kind === 'org' ? 'Введите название организации' : 'Введите имя'); }
-  c.phones = [v('cr-ph1'), v('cr-ph2')].filter(Boolean); c.emails = [v('cr-em')].filter(Boolean);
+  const ph = ['cr-ph1', 'cr-ph2'].map(id => { const x = v(id); return digitsOf(x).length <= 1 && /^\+7?\s*\(?$/.test(x) ? '' : phoneFmt(x); });
+  const bad = ph.findIndex(x => x && !phoneDone(x)); if (bad >= 0) { const el = $('#cr-ph' + (bad + 1)); el.focus(); return toast('Номер введён не полностью: нужно 10 цифр после +7'); }
+  c.phones = ph.filter(Boolean); c.emails = [v('cr-em')].filter(Boolean);
   c.addr = v('cr-addr'); c.note = ($('#cr-note') || {}).value || ''; c.upd = Date.now();
   snapU();
   if (c.kind === 'person') {
@@ -164,6 +168,46 @@ function crmMore(id) {
       <button class="btn ghost" data-act="crmNote" data-id="${id}">${ic('note')} Заметка о клиенте</button>
       <button class="btn ghost danger" data-act="crmDelAsk" data-id="${id}">${ic('trash')} Удалить</button></div>`);
 }
+
+// ---------- маска телефона: +7 (900) 123-45-67 ----------
+// 8… и 9… превращаются в +7…; номер с другим кодом страны (+375…, +998…) и короткий городской остаются как ввели
+const digitsOf = v => String(v || '').replace(/\D/g, '');
+function phoneFmt(v) {
+  const s = String(v || '').trim(); if (!s) return '';
+  const plus = s.startsWith('+'); let d = digitsOf(s);
+  if (!d) return plus ? '+' : '';
+  if (plus && d[0] !== '7') return s;
+  if (!plus) { if (d[0] === '8' && d.length > 1) d = '7' + d.slice(1); else if (d[0] === '8') d = '7'; else if (d[0] === '9') d = '7' + d; else if (d[0] !== '7') return s; }
+  const p = d.slice(1, 11); let out = '+7';
+  if (p.length) out += ' (' + p.slice(0, 3);
+  if (p.length >= 3) out += ')';
+  if (p.length > 3) out += ' ' + p.slice(3, 6);
+  if (p.length > 6) out += '-' + p.slice(6, 8);
+  if (p.length > 8) out += '-' + p.slice(8, 10);
+  return out;
+}
+const phoneRu = v => /^\+7/.test(phoneFmt(v));
+const phoneDone = v => !phoneRu(v) || digitsOf(phoneFmt(v)).length === 11;
+document.addEventListener('focusin', e => { const i = e.target; if (i.matches && i.matches('input[data-phone]') && !i.value) { i.value = '+7 ('; i.dataset.prev = i.value; i.dataset.ate = ''; setTimeout(() => i.setSelectionRange(i.value.length, i.value.length), 0); } });
+document.addEventListener('focusout', e => { const i = e.target; if (i.matches && i.matches('input[data-phone]') && digitsOf(i.value).length <= 1 && /^\+7?\s*\(?$/.test(i.value.trim())) i.value = ''; });
+document.addEventListener('input', e => {
+  const i = e.target; if (!i.matches || !i.matches('input[data-phone]')) return;
+  const prev = i.dataset.prev || '', v = i.value, bare = x => /^\+?7?\s*\(?$/.test(String(x).trim());
+  if (e.data === '+' && bare(prev)) { i.value = '+'; i.dataset.prev = '+'; return; }   // «+» — начать номер заново (в т. ч. иностранный)
+  const pos = i.selectionStart == null ? v.length : i.selectionStart, plus = v.trim().startsWith('+');
+  let before = digitsOf(v.slice(0, pos)).length, all = digitsOf(v);
+  if (e.inputType === 'deleteContentBackward' && all === digitsOf(prev) && before > 0) { all = all.slice(0, before - 1) + all.slice(before); before--; } // стёрли скобку/пробел/дефис — стираем цифру перед ними
+  if (plus && all[0] === '7' && (all[1] === '7' || all[1] === '8') && ((bare(prev) && i.dataset.ate !== '1') || all.length > 11)) { all = '7' + all.slice(2); before = Math.max(1, before - 1); if (all.length === 1) i.dataset.ate = '1'; } // набрали «+7…»/«8…» поверх «+7 (» (один раз) или вставили номер целиком
+  if (e.inputType && e.inputType.startsWith('delete') && plus && all.length <= 1) { i.value = ''; i.dataset.prev = ''; i.dataset.ate = ''; return; }
+  if (all.length > 1) i.dataset.ate = i.dataset.ate === '1' && all.length === 2 ? '1' : i.dataset.ate;
+  const f = all === '7' && plus ? '+7 (' : phoneFmt((plus ? '+' : '') + all);
+  if (!/^\+7/.test(f)) { i.dataset.prev = v; return; }   // иностранный или короткий номер — без маски
+  if (!plus && all[0] === '9') before++;
+  i.value = f; i.dataset.prev = f;
+  let c = f.length;
+  if (before <= 0) c = 0; else { let k = 0; for (let j = 0; j < f.length; j++) if (/\d/.test(f[j]) && ++k === before) { c = j + 1; break; } }
+  try { i.setSelectionRange(c, c); } catch (er) {}
+});
 // ---------- раздел ----------
 registerModule({
   id: 'crm', order: 4.6, title: 'Клиенты', icon: 'users', desc: 'Контакты и организации, история общения, напоминания «связаться», дни рождения',
@@ -185,7 +229,7 @@ registerModule({
     return `<div class="cwrap">${list}<div class="cpane">${c ? crmCard(c) : '<div class="empty">Выберите контакт</div>'}</div></div>`;
   },
   after() { if (CRF.focusLog) { const i = $('#cr-log'); if (i) i.focus(); CRF.focusLog = false; } },
-  search(q) { return CR().filter(c => !c.archived && lnorm([c.name, c.role, ...(c.phones || []), ...(c.emails || [])].join(' ')).includes(lnorm(q))).slice(0, 6).map(c => ({ group: 'Клиенты', title: c.name, sub: crmSub(c) || (c.phones || [])[0] || '', act: 'crmOpen', id: c.id })); }
+  search(q) { return CR().filter(c => !c.archived && (lnorm([c.name, c.role, ...(c.phones || []), ...(c.emails || [])].join(' ')).includes(lnorm(q)) || crmPhoneHit(c, q))).slice(0, 6).map(c => ({ group: 'Клиенты', title: c.name, sub: crmSub(c) || phoneFmt((c.phones || [])[0] || ''), act: 'crmOpen', id: c.id })); }
 });
 document.addEventListener('input', e => { if (e.target.id === 'crq') { CRF.q = e.target.value; const s = e.target.selectionStart; render(); const i = $('#crq'); if (i) { i.focus(); i.setSelectionRange(s, s); } } });
 document.addEventListener('change', e => { if (e.target.id === 'cr-org') { const b = $('.crneworg'); if (b) { b.hidden = e.target.value !== '+new'; if (!b.hidden) $('#cr-orgnew').focus(); } } });
