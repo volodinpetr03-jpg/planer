@@ -152,6 +152,7 @@ function normalize(d) {
   d.focusLog = Array.isArray(d.focusLog) ? d.focusLog : [];
   d.habits = Array.isArray(d.habits) ? d.habits : [];
   d.notes = Array.isArray(d.notes) ? d.notes : [];
+  d.contacts = Array.isArray(d.contacts) ? d.contacts : [];
   d.icals = Array.isArray(d.icals) ? d.icals : [];
   const bb = d.budget || {}; const db = defBudget();
   d.budget = { accounts: Array.isArray(bb.accounts) && bb.accounts.length ? bb.accounts : db.accounts, categories: Array.isArray(bb.categories) && bb.categories.length ? bb.categories : db.categories, tx: (bb.tx || []).map(x => newTx(x)), regular: bb.regular || [] };

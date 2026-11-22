@@ -6,9 +6,9 @@
 //  Связи двусторонние; из «Ссылаются сюда» можно перейти прямо к ссылающемуся фрагменту.
 // ============================================================
 ICONS.lnk = '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>';
-const RKI = { task: ['✓', 'var(--ok)'], note: ['✎', 'var(--mid)'], proj: ['▣', '#EC4899'], law: ['§', 'var(--acc)'] };
+const RKI = { task: ['✓', 'var(--ok)'], note: ['✎', 'var(--mid)'], proj: ['▣', '#EC4899'], law: ['§', 'var(--acc)'], cont: ['☺', '#14b8a6'] };
 const rkey = r => !r ? '' : r.k === 'law' ? `law:${r.doc}/${r.art}` : `${r.k}:${r.id}`;
-const rparse = k => { const m = String(k || '').match(/^(task|note|proj|law):(.+)$/); if (!m) return null; if (m[1] === 'law') { const [doc, art] = m[2].split('/'); return { k: 'law', doc, art }; } return { k: m[1], id: m[2] }; };
+const rparse = k => { const m = String(k || '').match(/^(task|note|proj|law|cont):(.+)$/); if (!m) return null; if (m[1] === 'law') { const [doc, art] = m[2].split('/'); return { k: 'law', doc, art }; } return { k: m[1], id: m[2] }; };
 const rsame = (a, b) => rkey(a) === rkey(b);
 // что это за объект
 function rinfo(r) {
@@ -16,6 +16,7 @@ function rinfo(r) {
   if (r.k === 'task') { const t = byId(r.id); return t && !t.archived ? { title: t.title, label: 'задача: ' + t.title, sub: isDone(t) ? 'выполнена' : t.date ? dueTxt(t) : 'без даты', done: isDone(t) } : null; }
   if (r.k === 'note') { const n = typeof noteOf === 'function' && noteOf(r.id); return n ? { title: noteTitle(n), label: 'заметка: ' + noteTitle(n), sub: 'заметка' } : null; }
   if (r.k === 'proj') { const p = projOf(r.id); return p ? { title: p.title, label: 'проект: ' + p.title, sub: 'проект' } : null; }
+  if (r.k === 'cont') { const c = typeof crmOf === 'function' && crmOf(r.id); return c ? { title: c.name, label: 'клиент: ' + c.name, sub: crmSub(c) || (c.kind === 'org' ? 'организация' : 'контакт') } : null; }
   if (r.k === 'law') { const d = lawDoc(r.doc), a = d && lawArt(r.doc, r.art); return a ? { title: artLabel(d, a), label: artLabel(d, a), sub: a.k === 'x' ? d.title : (a.t || d.title) } : d ? { title: d.short || d.title, label: d.short || d.title, sub: 'статья не найдена в текущей редакции' } : null; }
   return null;
 }
@@ -24,10 +25,11 @@ function ropen(r) {
   if (r.k === 'task') { closeSheet(); openTaskForm(r.id); }
   else if (r.k === 'note') { closeSheet(); ACT.noteOpen({ dataset: { id: r.id } }); }
   else if (r.k === 'proj') { closeSheet(); ACT.openProject({ dataset: { id: r.id } }); }
+  else if (r.k === 'cont') { closeSheet(); ACT.crmOpen({ dataset: { id: r.id } }); }
   else if (r.k === 'law') lawLoad().then(() => { closeSheet(); closeModal(); if (!lawArt(r.doc, r.art)) return toast('Этого пункта нет в вашей библиотеке'); LF.back = null; LF.hl = null; ACT.lawOpen({ dataset: { doc: r.doc, art: r.art } }); });
 }
 // --- явные связи объекта (хранятся у задачи, заметки или проекта) ---
-const srcObj = s => s.k === 'task' ? (UI.form && UI.form.kind === 'task' && UI.form.t.id === s.id ? UI.form.t : byId(s.id)) : s.k === 'note' ? noteOf(s.id) : s.k === 'proj' ? projOf(s.id) : null;
+const srcObj = s => s.k === 'task' ? (UI.form && UI.form.kind === 'task' && UI.form.t.id === s.id ? UI.form.t : byId(s.id)) : s.k === 'note' ? noteOf(s.id) : s.k === 'proj' ? projOf(s.id) : s.k === 'cont' && typeof crmOf === 'function' ? crmOf(s.id) : null;
 function srcRefs(s, o) {
   o = o || srcObj(s); if (!o) return [];
   const out = [];
@@ -87,6 +89,7 @@ function resolveLabel(label) {
   if ((o = pre('задача:', live(), t => t.title))) return { k: 'task', id: o.id };
   if ((o = pre('заметка:', NT(), n => noteTitle(n)))) return { k: 'note', id: o.id };
   if ((o = pre('проект:', D.projects, p => p.title))) return { k: 'proj', id: o.id };
+  if ((o = pre('клиент:', D.contacts || [], c => c.name))) return { k: 'cont', id: o.id };
   const a = autoRefs(l); if (a.length) return a[0].ref;
   // точная подпись пункта закона, как её вставляет подсказка
   for (const d of LW().docs) for (const x of lawArts(d.id)) if (lnorm(artLabel(d, x)) === low) return { k: 'law', doc: d.id, art: x.id };
@@ -119,6 +122,7 @@ function linkIndex() {
   });
   NT().forEach(n => { const s = { k: 'note', id: n.id }; srcRefs(s, n).forEach(r => add(s, r, 'link')); if (n.body) scanRefs(n.body, n.ment).forEach((it, i) => add(s, it.ref, 'body', i, it.label)); });
   D.projects.forEach(p => { const s = { k: 'proj', id: p.id }; (p.links || []).forEach(r => add(s, r, 'link')); });
+  (D.contacts || []).forEach(c => { const s = { k: 'cont', id: c.id }; (c.links || []).forEach(r => add(s, r, 'link')); });
   LIX = E; LIXt = Date.now(); return E;
 }
 const backOf = r => { const k = rkey(r); return linkIndex().filter(e => rkey(e.to) === k && rkey(e.from) !== k && rinfo(e.from)); };
@@ -128,18 +132,19 @@ const eAttr = e => `data-act="edgeGo" data-src="${esc(rkey(e.from))}" data-to="$
 const rIcon = r => `<i class="lki" style="--c:${(RKI[r.k] || RKI.task)[1]}">${(RKI[r.k] || RKI.task)[0]}</i>`;
 // --- блок «Связи» ---
 function linksBlock(s, o) {
-  const refs = srcRefs(s, o), back = s.k === 'task' && UI.form && UI.form.isNew ? [] : backOf(s);
+  const refs = srcRefs(s, o), back = s.k === 'task' && UI.form && UI.form.isNew ? [] : backOf(s).filter(e => !(s.k === 'cont' && e.from.k === 'task')); // у клиента задачи и так видны в карточке
   const txt = s.k === 'task' ? scanRefs(o.desc || '', o.ment) : [];
   const backU = []; back.forEach(e => { if (!backU.some(x => rsame(x.from, e.from) && x.f === e.f && x.mi === e.mi)) backU.push(e); });
   const row = (r, rm) => { const inf = rinfo(r); return `<div class="lkrow ${inf ? '' : 'bad'} ${inf && inf.done ? 'dn' : ''}" data-rk="${esc(rkey(r))}">${rIcon(r)}<button type="button" class="tx" data-act="refGo" data-rk="${esc(rkey(r))}"><b>${esc(inf ? inf.label : 'Объект удалён')}</b><small>${esc(inf ? inf.sub || '' : '')}</small></button>${rm ? `<button type="button" class="ib sm" data-act="lnkDel" data-src="${esc(rkey(s))}" data-rk="${esc(rkey(r))}" title="Убрать связь" aria-label="Убрать связь">${ic('x')}</button>` : ''}</div>`; };
-  return `<div class="f lkw" id="lkbox" data-src="${esc(rkey(s))}"><span>${ic('lnk')} Связи${refs.length ? ' · ' + refs.length : ''} <em>— с задачами, заметками, законами и проектами</em></span>
+  return `<div class="f lkw" id="lkbox" data-src="${esc(rkey(s))}"><span>${ic('lnk')} Связи${refs.length ? ' · ' + refs.length : ''} <em>— с задачами, заметками, клиентами, законами и проектами</em></span>
     ${refs.map(r => row(r, true)).join('')}
     <button type="button" class="lkadd" data-act="lnkAdd" data-src="${esc(rkey(s))}">${ic('plus')} Связь</button> <span class="hint lkhint">или наберите <b>[[</b> в тексте</span>
     ${txt.length ? `<div class="lksub"><span>В описании:</span>${txt.map(it => `<button type="button" class="chip ${it.ref ? '' : 'bad'}" data-act="refGo" data-rk="${esc(rkey(it.ref))}">${it.ref ? rIcon(it.ref) : ''}${esc(it.label)}</button>`).join('')}</div>` : ''}
     ${backU.length ? `<div class="lkback"><span>Ссылаются сюда · ${backU.length}</span>${backU.map(e => { const inf = rinfo(e.from); return `<div class="lkrow back">${rIcon(e.from)}<button type="button" class="tx" ${eAttr(e)} title="Перейти к месту ссылки"><b>${esc(inf.label)}</b><small>${fWhere(e)}${e.lab ? ': «' + esc(e.lab.slice(0, 60)) + '»' : ''}</small></button><span class="lkgo">${ic('right')}</span></div>`; }).join('')}</div>` : ''}
   </div>`;
 }
-function drawLk() { const b = $('#lkbox'); if (!b) return; const s = rparse(b.dataset.src), o = srcObj(s); if (o) b.outerHTML = linksBlock(s, o); }
+const lkBox = () => $('#modal.open #lkbox') || $('#lkbox');
+function drawLk() { const b = lkBox(); if (!b) return; const s = rparse(b.dataset.src), o = srcObj(s); if (o) b.outerHTML = linksBlock(s, o); }
 // --- окно выбора «+ Связь» ---
 const LKP = { tab: 'all', q: '', on: null, kinds: null, ex: null };
 function refSearch(q, kinds, limit = 30) {
@@ -154,6 +159,7 @@ function refSearch(q, kinds, limit = 30) {
   }
   if (has('task')) live().filter(t => !L || lnorm(t.title).includes(L)).sort((a, b) => isDone(a) - isDone(b) || (b.created || 0) - (a.created || 0)).slice(0, L ? 12 : 8).forEach(t => out.push({ k: 'task', id: t.id }));
   if (has('note')) NT().filter(n => !L || lnorm(n.title + ' ' + n.body).includes(L)).sort((a, b) => b.upd - a.upd).slice(0, L ? 10 : 5).forEach(n => out.push({ k: 'note', id: n.id }));
+  if (has('cont')) (D.contacts || []).filter(c => !c.archived && (!L || lnorm(c.name + ' ' + (c.role || '') + ' ' + (c.phones || []).join(' ')).includes(L))).slice(0, L ? 10 : 5).forEach(c => out.push({ k: 'cont', id: c.id }));
   if (has('proj')) D.projects.filter(p => p.status !== 'archived' && (!L || lnorm(p.title).includes(L))).slice(0, 6).forEach(p => out.push({ k: 'proj', id: p.id }));
   const sc = r => r.k === 'law' ? 0 : 1;
   const seen = new Set(); return out.filter(r => { const k = rkey(r); if (seen.has(k)) return false; seen.add(k); return true; }).filter(r => !LKP.ex || !LKP.ex.includes(rkey(r))).sort((a, b) => L && a.k === 'law' && b.k !== 'law' ? -1 : 0).slice(0, limit);
@@ -161,7 +167,7 @@ function refSearch(q, kinds, limit = 30) {
 function lnkPick(onPick, opts = {}) {
   Object.assign(LKP, { tab: 'all', q: '', on: onPick, kinds: opts.kinds || null, ex: opts.ex || null });
   lawLoad();
-  const T = [['all', 'Всё'], ['task', 'Задачи'], ['note', 'Заметки'], ['law', 'Законы'], ['proj', 'Проекты']].filter(([k]) => k === 'all' || !LKP.kinds || LKP.kinds.includes(k));
+  const T = [['all', 'Всё'], ['task', 'Задачи'], ['note', 'Заметки'], ['cont', 'Клиенты'], ['law', 'Законы'], ['proj', 'Проекты']].filter(([k]) => k === 'all' || !LKP.kinds || LKP.kinds.includes(k));
   sheet(`<div class="lpick"><div class="shh"><b>${esc(opts.title || 'Связать с…')}</b><small>${esc(opts.sub || 'задача, заметка, статья или пункт закона, проект')}</small></div>
     <input class="in" id="lkq" placeholder="Название задачи или заметки, «п. 5 2188», «ст. 80 323-ФЗ»…" autocomplete="off">
     <div class="chips lktabs">${T.map(([k, l]) => `<button class="chip ${k === 'all' ? 'on' : ''}" data-act="lnkTab" data-v="${k}">${l}</button>`).join('')}</div>
@@ -211,7 +217,7 @@ window.addEventListener('keydown', e => {
 }, true);
 document.addEventListener('mousedown', e => { if (!MD.el) return; const b = e.target.closest && e.target.closest('.mdd button'); if (b) { e.preventDefault(); mddPick(+b.dataset.mdi); } else if (!e.target.closest || !e.target.closest('.mdd')) mddClose(); }, true);
 function drawDescRefs() {
-  const b = $('#lkbox'); if (!b || !UI.form || UI.form.kind !== 'task') return;
+  const b = lkBox(); if (!b || !UI.form || UI.form.kind !== 'task') return;
   UI.form.t.desc = ($('#f-desc') || {}).value || ''; clearTimeout(MD.dt); MD.dt = setTimeout(drawLk, 350);
 }
 // --- переход к месту ссылки ---
@@ -224,14 +230,17 @@ function edgeGo(src, toKey, f, mi) {
     after(() => {
       if (f === 'desc') { const ta = $('#f-desc'), it = ta && scanRefs(ta.value, (UI.form.t || {}).ment)[mi]; if (ta && it) { ta.focus(); ta.setSelectionRange(it.s, it.e); ta.scrollIntoView({ block: 'center' }); ta.classList.add('lkflash'); setTimeout(() => ta.classList.remove('lkflash'), 1800); } return; }
       if (f.startsWith('cm:')) { const el = $(`.cm[data-cid="${f.slice(3)}"]`); if (el) { flashEl(el); const m = el.querySelectorAll('.mref')[mi]; if (m) m.classList.add('lkflash'); } return; }
-      flashEl($(`#lkbox .lkrow[data-rk="${CSS.escape(toKey)}"]`));
+      flashEl((lkBox() || document).querySelector(`.lkrow[data-rk="${CSS.escape(toKey)}"]`));
     });
   } else if (s.k === 'note') {
     NOF.open = s.id; NOF.edit = false; closeModal(); if (UI.view !== 'notes') go('notes'); else render();
-    after(() => { if (f === 'body') { const m = $$('.nview .mref')[mi]; flashEl(m); } else flashEl($(`#lkbox .lkrow[data-rk="${CSS.escape(toKey)}"]`)); });
+    after(() => { if (f === 'body') { const m = $$('.nview .mref')[mi]; flashEl(m); } else flashEl((lkBox() || document).querySelector(`.lkrow[data-rk="${CSS.escape(toKey)}"]`)); });
   } else if (s.k === 'proj') {
     closeModal(); ACT.openProject({ dataset: { id: s.id } });
-    after(() => flashEl($(`#lkbox .lkrow[data-rk="${CSS.escape(toKey)}"]`)));
+    after(() => flashEl((lkBox() || document).querySelector(`.lkrow[data-rk="${CSS.escape(toKey)}"]`)));
+  } else if (s.k === 'cont') {
+    closeModal(); ACT.crmOpen({ dataset: { id: s.id } });
+    after(() => flashEl((lkBox() || document).querySelector(`.lkrow[data-rk="${CSS.escape(toKey)}"]`)));
   }
 }
 Object.assign(ACT, {

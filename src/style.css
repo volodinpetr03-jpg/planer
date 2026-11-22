@@ -1397,3 +1397,56 @@ body.mob .rb.tgt .rbt,body.mob .rb.marked .rbt{display:flex;width:max-content;ma
 .lk-bio .ic{width:1.25rem;height:1.25rem}
 .sline .tx b .ic{width:1.05rem;height:1.05rem;vertical-align:-.15rem;margin-right:.15rem}
 .sline .tx em.warn{font-style:normal;color:var(--mid)}
+/* ---------- CRM: «Клиенты» ---------- */
+.cwrap{display:grid;grid-template-columns:minmax(17rem,23rem) minmax(0,1fr);height:100%;min-height:0}
+.cwrap.one{grid-template-columns:minmax(0,1fr);height:auto}
+.clist{overflow-y:auto;border-right:1px solid var(--line);padding:.7rem;display:flex;flex-direction:column;gap:.3rem;min-height:0}
+.cpane{overflow-y:auto;min-height:0}
+.cflt{margin:0 .2rem .4rem;flex-wrap:wrap}
+.crow{display:flex;align-items:center;gap:.75rem;padding:.6rem .7rem;border-radius:.8rem;border:1px solid transparent;background:none;color:var(--ink);text-align:left;cursor:pointer;width:100%;font:inherit}
+.crow:hover{background:var(--hover)}
+.crow.on{background:var(--card);border-color:var(--line2)}
+.crow .tx{flex:1;min-width:0;display:grid}
+.crow .tx b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crow .tx small{color:var(--mute);font-size:.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cava{width:2.5rem;height:2.5rem;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:700;font-size:.9rem;background:color-mix(in srgb,var(--c) 22%,var(--card2));color:var(--c);border:1px solid color-mix(in srgb,var(--c) 45%,transparent)}
+.cava.org{border-radius:.7rem}.cava .ic{width:1.25rem;height:1.25rem}
+.cava.big{width:4rem;height:4rem;font-size:1.35rem}.cava.big .ic{width:1.9rem;height:1.9rem}
+.cdue{font-size:.78rem;font-weight:600;color:var(--mute);white-space:nowrap}
+.cdue.now{color:var(--mid)}.cdue.over{color:var(--hi)}
+.ccard{padding:1.3rem 1.6rem 2rem;display:flex;flex-direction:column;gap:1rem;max-width:72rem}
+.chead{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.chead .tx{flex:1 1 14rem;min-width:0}
+.chead h2{margin:0;font-size:1.45rem;line-height:1.2}
+.chead .tx span{color:var(--ink2)}
+.cacts{display:flex;gap:.5rem;flex-wrap:wrap}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(13rem,1fr));gap:.6rem}
+.cfld{background:var(--panel);border:1px solid var(--line);border-radius:.8rem;padding:.6rem .8rem;display:grid;gap:.15rem;min-width:0}
+.cfld span{color:var(--mute);font-size:.8rem}
+.cfld b{font-weight:600;overflow-wrap:anywhere}.cfld b .tg{margin-right:.3rem}
+.cnote{white-space:pre-line;color:var(--ink2);background:var(--panel);border:1px solid var(--line);border-radius:.8rem;padding:.7rem .9rem}
+.cnext{display:flex;align-items:center;gap:.8rem;padding:.75rem 1rem;border-radius:.9rem;background:color-mix(in srgb,var(--mid) 10%,transparent);border:1px solid color-mix(in srgb,var(--mid) 45%,transparent);flex-wrap:wrap}
+.cnext>.ic{color:var(--mid);width:1.2rem;height:1.2rem;flex:none}
+.cnext .tx{flex:1 1 12rem;display:grid;min-width:0}.cnext .tx span{color:var(--ink2)}
+.cnext.over{background:color-mix(in srgb,var(--hi) 10%,transparent);border-color:color-mix(in srgb,var(--hi) 45%,transparent)}.cnext.over>.ic{color:var(--hi)}
+.cnext.none{background:var(--panel);border-color:var(--line)}.cnext.none>.ic{color:var(--mute)}.cnext.none .tx span{color:var(--mute)}
+.ccols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;align-items:start}
+.clogadd{display:grid;gap:.5rem;margin-bottom:.6rem}.clogadd .chips{flex-wrap:wrap}.clogadd .chip .ic{width:1rem;height:1rem}
+.clogin{display:flex;gap:.5rem}.clogin .in{flex:1;min-width:0}
+.clog{display:flex;gap:.65rem;padding:.55rem 0;border-top:1px solid var(--line)}
+.clog>i{width:1.9rem;height:1.9rem;border-radius:50%;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c)}
+.clog>i .ic{width:1rem;height:1rem}
+.clog .tx{flex:1;min-width:0;display:grid}.clog .tx b small{color:var(--mute);font-weight:400;margin-left:.3rem}.clog .tx span{color:var(--ink2);white-space:pre-line;overflow-wrap:anywhere}
+.clog .ib{opacity:0}.clog:hover .ib,.clog .ib:focus{opacity:1}
+.ctask{display:flex;align-items:center;gap:.6rem;cursor:pointer}.ctask.dn b{color:var(--mute);text-decoration:line-through}
+.cdone{margin-top:.3rem;opacity:.85}
+.ccols #lkbox{margin-top:.9rem}
+.seg{display:flex;gap:.3rem;background:var(--panel);border:1px solid var(--line);border-radius:.8rem;padding:.25rem;margin-bottom:.4rem}
+.seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:.4rem;height:2.4rem;border:0;border-radius:.6rem;background:none;color:var(--ink2);font:inherit;cursor:pointer}
+.seg button.on{background:var(--card2);color:var(--ink);font-weight:600}.seg button .ic{width:1.05rem;height:1.05rem}
+.cnxt{flex-wrap:wrap;margin:.2rem 0 .4rem}
+@media (max-width:900px){.ccols{grid-template-columns:minmax(0,1fr)}}
+body.mob .ccard{padding:1rem .9rem 2rem}
+body.mob .cacts .btn span{display:none}
+body.mob .clist{border-right:0;overflow:visible}
+body.mob .clog .ib{opacity:1}
