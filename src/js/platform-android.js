@@ -297,7 +297,31 @@
     notifPermission: async () => { try { return (await Notif.checkPermissions()).display === 'granted'; } catch (e) { return false; } },
     askNotif: async () => { chReady = null; return ensureChannel(); },
     lock: {
-      status: async () => { const L = await readLock(); return { enabled: !!L, hint: L ? L.hint || '' : '', created: L ? L.created : null }; },
+      status: async () => { const L = await readLock(); return { enabled: !!L, hint: L ? L.hint || '' : '', created: L ? L.created : null, bio: !!(L && L.bio) }; },
+      // ---- вход по отпечатку: ключ данных зашифрован ключом AndroidKeyStore, доступным только по пальцу ----
+      bioStatus: async () => { const L = await readLock(); let a = { available: false, reason: 'nohw' }; try { a = await PF.bioStatus(); } catch (e) {} return { ...a, enabled: !!(L && L.bio), kind: 'finger' }; },
+      bioEnable: async () => {
+        const L = await readLock(); if (!L || !DEK) return { ok: false, error: 'Сначала войдите по паролю' };
+        try { const r = await PF.bioEnroll({ secret: b64(DEK) }); await writeLock({ ...(await readLock()), bio: { iv: r.iv, ct: r.ct } }); log('Включён вход по отпечатку'); return { ok: true }; }
+        catch (e) { return { ok: false, cancel: e && e.code === 'cancel', error: (e && e.message) || 'Не получилось' }; }
+      },
+      bioDisable: async () => { const L = await readLock(); if (L && L.bio) { const { bio, ...rest } = L; await writeLock(rest); } try { await PF.bioClear(); } catch (e) {} return { ok: true }; },
+      bioUnlock: async mode => {
+        const L = await readLock(); if (!L || !L.bio) return { ok: false, error: 'Вход по отпечатку не включён' };
+        let key;
+        try { key = ub((await PF.bioDecrypt(L.bio)).secret); }
+        catch (e) {
+          if (e && e.code === 'invalid') { const { bio, ...rest } = L; await writeLock(rest); return { ok: false, invalid: true, error: 'Отпечатки в телефоне изменились — войдите по паролю и включите вход по отпечатку заново (Настройки → Безопасность)' }; }
+          return { ok: false, cancel: e && e.code === 'cancel', error: e && e.code === 'lockout' ? 'Слишком много попыток — войдите по паролю' : (e && e.message) || 'Не получилось' };
+        }
+        if (mode === 'start') {
+          const raw = await loadRaw(), prev = DEK; DEK = key;
+          const d = await resolveLoaded(raw);
+          if (isEnc(raw) && !d) { DEK = prev; return { ok: false, error: 'Ключ не подошёл — войдите по паролю' }; }
+          fails = 0; uiLocked = false; data = d; scheduleSoon(); return { ok: true, data };
+        }
+        fails = 0; uiLocked = false; return { ok: true };
+      },
       unlock: async pw => {
         const g = guard(); if (g) return g;
         const L = await readLock(); if (!L) return { ok: false, error: 'Пароль не включён' };
@@ -356,7 +380,7 @@
         const L = await readLock(); if (!L) return { ok: true };
         const key = await tryUnwrap(pw, L.salt, L.wp, L.iter); if (!key) return failed();
         fails = 0; DEK = key; await recryptBackups(false);
-        await writeLock(null); if (data) await saveData(data); DEK = null; lastSig = ''; scheduleSoon(); log('Вход по паролю отключён');
+        await writeLock(null); try { await PF.bioClear(); } catch (e) {} if (data) await saveData(data); DEK = null; lastSig = ''; scheduleSoon(); log('Вход по паролю отключён');
         return { ok: true };
       },
       lockUi: () => { readLock().then(L => { if (L) uiLocked = true; }); }

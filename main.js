@@ -1,5 +1,5 @@
 // Планер — основной процесс Electron
-const { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, Notification, nativeImage, dialog, shell, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -278,7 +278,60 @@ ipcMain.handle('data:load', () => {
 // ---- вход по паролю ----
 function guard() { const w = blockUntil - Date.now(); return w > 0 ? { ok: false, wait: w, error: `Слишком много попыток. Подождите ${Math.ceil(w / 1000)} с` } : null; }
 function failed() { fails++; if (fails >= 5) blockUntil = Date.now() + 30000 * (fails - 4); return { ok: false, error: 'Неверный пароль', left: Math.max(0, 5 - fails), wait: Math.max(0, blockUntil - Date.now()) }; }
-ipcMain.handle('lock:status', () => { const L = readLock(); return { enabled: !!L, hint: L ? L.hint || '' : '', created: L ? L.created : null }; });
+ipcMain.handle('lock:status', () => { const L = readLock(); return { enabled: !!L, hint: L ? L.hint || '' : '', created: L ? L.created : null, bio: !!(L && L.bioWin) }; });
+// ---- вход через Windows Hello (отпечаток, лицо или PIN Windows) ----
+// Проверку выполняет сама Windows (UserConsentVerifier), ключ данных хранится зашифрованным средствами Windows
+// для этой учётной записи (DPAPI через safeStorage) и открывается только после успешной проверки.
+let helloCache = null;
+function hello(op) {
+  if (process.platform !== 'win32') return Promise.resolve('NotWindows');
+  const call = op === 'check' ? "[Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync()" : "[Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync('Вход в Планер')";
+  const type = op === 'check' ? '[Windows.Security.Credentials.UI.UserConsentVerifierAvailability]' : '[Windows.Security.Credentials.UI.UserConsentVerificationResult]';
+  const ps = `$ErrorActionPreference='Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null=[Windows.Security.Credentials.UI.UserConsentVerifier,Windows.Security.Credentials.UI,ContentType=WindowsRuntime]
+$m=([System.WindowsRuntimeSystemExtensions].GetMethods()|?{$_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1'})[0]
+$t=$m.MakeGenericMethod(${type}).Invoke($null,@(${call}))
+$null=$t.Wait(-1)
+[Console]::Out.Write([string]$t.Result)`;
+  return new Promise(res => {
+    let out = '';
+    try {
+      const cp = require('child_process').spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(ps, 'utf16le').toString('base64')], { windowsHide: true });
+      const t = setTimeout(() => { try { cp.kill(); } catch (e) {} res('Timeout'); }, op === 'check' ? 20000 : 120000);
+      cp.stdout.on('data', d => out += d); cp.stderr.on('data', d => log('Windows Hello: ' + String(d).slice(0, 300)));
+      cp.on('error', () => { clearTimeout(t); res('Error'); });
+      cp.on('close', () => { clearTimeout(t); res(out.trim().split(/\r?\n/).pop() || 'Error'); });
+    } catch (e) { res('Error'); }
+  });
+}
+const HELLO_ERR = { DeviceNotPresent: 'Windows Hello не настроен на этом компьютере', NotConfiguredForUser: 'Windows Hello не настроен: Параметры Windows → Учётные записи → Варианты входа', DisabledByPolicy: 'Windows Hello отключён политикой компьютера', DeviceBusy: 'Сканер занят — попробуйте ещё раз', RetriesExhausted: 'Слишком много попыток — войдите по паролю', Canceled: 'Отменено', Timeout: 'Windows Hello не ответил', Error: 'Не удалось вызвать Windows Hello', NotWindows: 'Доступно только в Windows' };
+ipcMain.handle('lock:bioStatus', async () => {
+  const L = readLock();
+  if (!helloCache || Date.now() - helloCache.at > 60000) helloCache = { at: Date.now(), v: await hello('check') };
+  const ok = helloCache.v === 'Available' && safeStorage.isEncryptionAvailable();
+  return { available: ok, reason: ok ? 'ok' : helloCache.v, text: ok ? '' : HELLO_ERR[helloCache.v] || helloCache.v, enabled: !!(L && L.bioWin), kind: 'hello' };
+});
+ipcMain.handle('lock:bioEnable', async () => {
+  const L = readLock(); if (!L || !DEK) return { ok: false, error: 'Сначала войдите по паролю' };
+  if (!safeStorage.isEncryptionAvailable()) return { ok: false, error: 'Шифрование Windows недоступно' };
+  const r = await hello('verify'); if (r !== 'Verified') return { ok: false, cancel: r === 'Canceled', error: HELLO_ERR[r] || r };
+  const L2 = readLock(); L2.bioWin = b64(safeStorage.encryptString(b64(DEK))); writeSafe(LOCK_FILE(), JSON.stringify(L2)); log('Включён вход через Windows Hello');
+  return { ok: true };
+});
+ipcMain.handle('lock:bioDisable', () => { const L = readLock(); if (L && L.bioWin) { delete L.bioWin; writeSafe(LOCK_FILE(), JSON.stringify(L)); } return { ok: true }; });
+ipcMain.handle('lock:bioUnlock', async (e, mode) => {
+  const L = readLock(); if (!L || !L.bioWin) return { ok: false, error: 'Вход через Windows Hello не включён' };
+  const r = await hello('verify'); if (r !== 'Verified') return { ok: false, cancel: r === 'Canceled', error: HELLO_ERR[r] || r };
+  let key; try { key = ub(safeStorage.decryptString(ub(L.bioWin))); } catch (err) { return { ok: false, error: 'Ключ Windows Hello не открылся — войдите по паролю и включите вход заново' }; }
+  if (mode === 'start') {
+    const raw = loadData(), prev = DEK; DEK = key;
+    let d = null; try { d = resolveLoaded(raw); } catch (err) { d = null; }
+    if (isEnc(raw) && !d) { DEK = prev; return { ok: false, error: 'Ключ не подошёл — войдите по паролю' }; }
+    fails = 0; uiLocked = false; data = d; return { ok: true, data };
+  }
+  fails = 0; uiLocked = false; return { ok: true };
+});
 ipcMain.handle('lock:unlock', (e, pw) => {
   const g = guard(); if (g) return g;
   const L = readLock(); if (!L) return { ok: false, error: 'Пароль не включён' };

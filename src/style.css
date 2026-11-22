@@ -1392,3 +1392,8 @@ body.mob .rb.tgt .rbt,body.mob .rb.marked .rbt{display:flex;width:max-content;ma
 .irate input[type=date]{width:auto;flex:1 1 8rem;min-width:0}.irate [data-ir=rate]{width:4.8rem;flex:none;text-align:right}
 .irate span{color:var(--mute);font-size:.9rem}
 .acc .accint{display:block;font-style:normal;font-size:.8rem;color:#fff;font-weight:700;margin-top:.2rem;opacity:.95}
+/* вход по отпечатку / Windows Hello */
+.lk-bio{width:100%;justify-content:center;margin-top:.55rem;gap:.5rem}
+.lk-bio .ic{width:1.25rem;height:1.25rem}
+.sline .tx b .ic{width:1.05rem;height:1.05rem;vertical-align:-.15rem;margin-right:.15rem}
+.sline .tx em.warn{font-style:normal;color:var(--mid)}

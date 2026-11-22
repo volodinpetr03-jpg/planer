@@ -2,17 +2,19 @@
 // ============================================================
 //  Вход по паролю: экран входа, блокировка, настройки безопасности
 // ============================================================
-const LK = { mode: 'start', recover: false, info: null, status: { enabled: false, hint: '' }, last: Date.now(), timer: null };
+const LK = { mode: 'start', recover: false, info: null, status: { enabled: false, hint: '' }, last: Date.now(), timer: null, bio: null, bioBusy: false, bioAuto: false };
+const bioName = () => IS_PHONE ? 'отпечатку' : 'Windows Hello';
 const lockApi = () => hasApi && window.api.lock;
 const eyeIcon = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const lockIcon = '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>';
 ICONS.lock = '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>';
 ICONS.shield = '<path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.4-7.5 9.5-4.3-1.1-7.5-4.9-7.5-9.5V6z"/><path d="M8.8 12.2l2.2 2.2 4.3-4.6"/>';
+ICONS.finger = '<path d="M8.2 4.6A8 8 0 0 1 20 11.5v1.5"/><path d="M4.5 8.2A8 8 0 0 0 4 11v2"/><path d="M8 20c.6-1.8 1-3.8 1-6v-2.5a3 3 0 0 1 6 0V13"/><path d="M12 11.5V14c0 3-.7 5.5-2 7.5"/><path d="M15 16.5c-.2 1.7-.6 3.3-1.3 4.7M17.6 18.5c.3-1.3.4-2.8.4-4.5v-2.5"/>';
 ICONS.key = '<circle cx="8" cy="15" r="4.5"/><path d="M11.3 11.7L20 3M16.5 6.5l2.5 2.5M14 9l2 2"/>';
 
 async function refreshLockStatus() { if (lockApi()) LK.status = await window.api.lock.status(); return LK.status; }
 function showLock(mode, info) {
-  LK.mode = mode; LK.info = info || {}; LK.recover = false;
+  LK.mode = mode; LK.info = info || {}; LK.recover = false; LK.bioAuto = true;
   const el = $('#lock'); el.classList.add('open'); drawLock();
 }
 function drawLock(err) {
@@ -25,11 +27,26 @@ function drawLock(err) {
       <p class="lk-caps" id="lk-caps">Включён Caps Lock</p>
       <p class="lk-err" id="lk-err">${esc(err || '')}</p>
       <button class="btn pri lk-go" id="lk-go">${lockIcon}${rec ? 'Восстановить доступ' : 'Войти'}</button>
+      ${!rec && LK.status.bio && lockApi() && window.api.lock.bioUnlock ? `<button type="button" class="btn lk-bio" data-act="lkBio">${ic('finger')}${IS_PHONE ? 'Войти по отпечатку' : 'Войти через Windows Hello'}</button>` : ''}
     </form>
     <div class="lk-links">${rec ? '<button class="lnk" data-act="lkBack">Вернуться к паролю</button>' : `${info.hint || LK.status.hint ? '<button class="lnk" data-act="lkHint">Подсказка</button>' : ''}<button class="lnk" data-act="lkForgot">Забыли пароль?</button>`}</div>
     <p class="lk-hint" id="lk-hintbox"></p></div>`;
-  setTimeout(() => $('#lk-pw')?.focus(), 30);
+  if (!(LK.status.bio && IS_PHONE)) setTimeout(() => $('#lk-pw')?.focus(), 30);
   if (info.wait > 0) lockWait(info.wait);
+  // сразу предлагаем отпечаток / Windows Hello — один раз при показе экрана
+  if (!rec && LK.status.bio && LK.bioAuto && !(info.wait > 0)) { LK.bioAuto = false; setTimeout(() => { if (!document.hidden && $('#lock').classList.contains('open')) lockBio(); }, IS_PHONE ? 350 : 500); }
+}
+async function lockBio() {
+  if (LK.bioBusy || !lockApi() || !window.api.lock.bioUnlock) return;
+  LK.bioBusy = true; const b = $('[data-act=lkBio]'); if (b) b.disabled = true;
+  let r; try { r = await window.api.lock.bioUnlock(LK.mode === 'start' ? 'start' : 'ui'); } catch (e) { r = { ok: false, error: String((e && e.message) || e) }; }
+  LK.bioBusy = false; if ($('[data-act=lkBio]')) $('[data-act=lkBio]').disabled = false;
+  if (!r || !r.ok) {
+    if (r && r.invalid) { LK.status.bio = false; drawLock(r.error); return; }
+    if (r && !r.cancel && $('#lk-err')) $('#lk-err').textContent = r.error || '';
+    $('#lk-pw')?.focus(); return;
+  }
+  lockDone(r);
 }
 function lockWait(ms) {
   const b = $('#lk-go'), until = Date.now() + ms; if (!b) return; b.disabled = true;
@@ -47,6 +64,9 @@ async function lockSubmit() {
     $('#lk-err').textContent = r.error + (r.left > 0 && r.left < 4 ? ` · осталось попыток: ${r.left}` : ''); $('#lk-pw').select();
     if (r.wait > 0) lockWait(r.wait); return;
   }
+  lockDone(r);
+}
+function lockDone(r) {
   $('#lock').classList.remove('open'); $('#lock').innerHTML = '';
   if (LK.mode === 'start') startApp(r.data);
   else { UI.locked = false; render(); }
@@ -98,7 +118,7 @@ async function pwSave() {
   else if (k === 'newCode') r = await window.api.lock.newCode(v('pw0'));
   else if (k === 'disable') r = await window.api.lock.disable(v('pw0'));
   if (!r || !r.ok) { $('[data-act=pwSave]').disabled = false; return err((r && r.error) || 'Не получилось'); }
-  await refreshLockStatus(); applyLockButton();
+  LK.bio = null; await refreshLockStatus(); applyLockButton();
   if (r.code) return showCode(r.code, k);
   closeModal(); if (UI.settab !== undefined) { openSettings('security'); }
   toast(k === 'disable' ? 'Пароль отключён, данные расшифрованы' : 'Пароль изменён');
@@ -122,10 +142,29 @@ function securityTab() {
   return `<div class="secbox on">${ic('shield')}<div><b>Вход по паролю включён</b><span>Данные зашифрованы${st.created ? ' с ' + fmtTs(st.created) : ''}${st.hint ? ' · есть подсказка' : ''}</span></div><button class="btn" data-act="lockNow">${ic('lock')} Заблокировать <kbd>Ctrl L</kbd></button></div>
     <div class="sline"><div class="tx"><b>Автоблокировка</b><span>Заблокировать, если планером не пользуются</span></div><div class="ctl"><select class="in" id="s-autolock" style="width:auto">${[[0, 'Никогда'], [5, 'Через 5 минут'], [15, 'Через 15 минут'], [30, 'Через 30 минут'], [60, 'Через час']].map(([v, l]) => `<option value="${v}" ${(S.autoLock || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
     <div class="sline"><div class="tx"><b>${IS_PHONE ? 'Блокировать, когда Планер свёрнут' : 'Блокировать при сворачивании в трей'}</b><span>${IS_PHONE ? 'Вышли из приложения — при возвращении нужен пароль' : 'Закрыли окно крестиком — при следующем открытии нужен пароль'}</span></div><input type="checkbox" class="tog" id="s-lockhide" ${S.lockOnHide ? 'checked' : ''}></div>
+    ${bioRow()}
     <div class="sline"><div class="tx"><b>Сменить пароль</b><span>Нужен текущий пароль</span></div><button class="btn" data-act="pwOpen" data-v="change">Сменить</button></div>
     <div class="sline"><div class="tx"><b>Новый код восстановления</b><span>Если старый код потерян или мог попасть к посторонним</span></div><button class="btn" data-act="pwOpen" data-v="newCode">Создать</button></div>
     <div class="sline"><div class="tx"><b>Отключить пароль</b><span>Данные будут расшифрованы</span></div><button class="btn danger" data-act="pwOpen" data-v="disable">Отключить</button></div>
     <p class="hint">Резервная копия, сохранённая в файл через «Данные», не шифруется — храните её в надёжном месте.</p>`;
+}
+function bioRow() {
+  if (!lockApi() || !window.api.lock.bioStatus) return '';
+  const B = LK.bio, t = IS_PHONE ? 'Вход по отпечатку пальца' : 'Вход через Windows Hello';
+  if (!B) { setTimeout(async () => { LK.bio = await window.api.lock.bioStatus().catch(() => ({ available: false, reason: 'error' })); if (UI.settab === 'security') drawSettings(); }, 0); return `<div class="sline"><div class="tx"><b>${ic('finger')} ${t}</b><span>Проверяю, есть ли ${IS_PHONE ? 'сканер отпечатка' : 'Windows Hello'}…</span></div></div>`; }
+  const why = IS_PHONE ? ({ none: 'В телефоне не добавлен ни один отпечаток: Настройки Android → Безопасность → Отпечаток пальца.', nohw: 'В этом телефоне нет подходящего сканера отпечатка.', busy: 'Сканер сейчас недоступен — попробуйте позже.', update: 'Телефону нужно обновление безопасности.' }[B.reason] || 'Сканер отпечатка недоступен.') : (B.text || 'Windows Hello недоступен.');
+  const d = IS_PHONE ? 'Приложите палец вместо ввода пароля. Пароль и код восстановления продолжают работать. Если в телефоне добавят новый отпечаток, вход по отпечатку отключится сам — включите его заново.'
+    : 'Отпечаток, лицо или PIN — то, что настроено в Windows. Пароль и код восстановления продолжают работать.';
+  if (!B.available && !B.enabled) return `<div class="sline"><div class="tx"><b>${ic('finger')} ${t}</b><span>${esc(why)}</span></div><button class="btn ghost" data-act="bioRecheck">Проверить снова</button></div>`;
+  return `<div class="sline"><div class="tx"><b>${ic('finger')} ${t}</b><span>${d}${!B.available ? ' <em class="warn">' + esc(why) + '</em>' : ''}</span></div><input type="checkbox" class="tog" id="s-bio" ${B.enabled ? 'checked' : ''}></div>`;
+}
+async function bioToggle(on, el) {
+  el.disabled = true;
+  const r = on ? await window.api.lock.bioEnable() : await window.api.lock.bioDisable();
+  el.disabled = false;
+  if (!r || !r.ok) { el.checked = !on; if (!(r && r.cancel)) toast((r && r.error) || 'Не получилось'); return; }
+  LK.bio = null; await refreshLockStatus(); drawSettings();
+  toast(on ? (IS_PHONE ? 'Вход по отпечатку включён' : 'Вход через Windows Hello включён') : 'Вход по ' + bioName() + ' отключён');
 }
 function applyLockButton() { const b = $('#b-lock'); if (b) b.style.display = LK.status.enabled ? '' : 'none'; }
 
@@ -136,6 +175,8 @@ Object.assign(ACT, {
   lkForgot: () => { LK.recover = true; drawLock(); },
   lkBack: () => { LK.recover = false; drawLock(); },
   lockNow: () => lockNow(),
+  lkBio: () => lockBio(),
+  bioRecheck: () => { LK.bio = null; drawSettings(); },
   pwOpen: b => passwordModal(b.dataset.v),
   pwSave: () => pwSave(),
   codeCopy: b => navigator.clipboard.writeText(b.dataset.v).then(() => toast('Код скопирован')).catch(() => toast('Выделите код и скопируйте вручную')),
@@ -145,4 +186,4 @@ Object.assign(ACT, {
 document.addEventListener('submit', e => { if (e.target.id === 'lkform') { e.preventDefault(); e.stopImmediatePropagation(); lockSubmit(); } if (e.target.id === 'pwform') { e.preventDefault(); e.stopImmediatePropagation(); pwSave(); } }, true);
 document.addEventListener('keyup', e => { if (e.target.id === 'lk-pw' && e.getModifierState) { const c = $('#lk-caps'); if (c) c.classList.toggle('on', e.getModifierState('CapsLock')); } });
 document.addEventListener('input', e => { if (e.target.id === 'pw1') { const n = strength(e.target.value); $('#pw-bar').style.cssText = `width:${(n + 1) * 20}%;background:${['var(--hi)', 'var(--hi)', 'var(--mid)', 'var(--ok)', 'var(--ok)'][n]}`; $('#pw-lbl').textContent = e.target.value ? 'Надёжность: ' + SLBL[n].toLowerCase() : ''; } }, true);
-document.addEventListener('change', e => { if (e.target.id === 'code-ok') $('#code-done').disabled = !e.target.checked; if (e.target.id === 's-autolock') { D.settings.autoLock = +e.target.value; save(); } if (e.target.id === 's-lockhide') { D.settings.lockOnHide = e.target.checked; save(); } }, true);
+document.addEventListener('change', e => { if (e.target.id === 'code-ok') $('#code-done').disabled = !e.target.checked; if (e.target.id === 's-autolock') { D.settings.autoLock = +e.target.value; save(); } if (e.target.id === 's-lockhide') { D.settings.lockOnHide = e.target.checked; save(); } if (e.target.id === 's-bio') bioToggle(e.target.checked, e.target); }, true);

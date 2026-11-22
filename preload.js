@@ -24,7 +24,11 @@ contextBridge.exposeInMainWorld('api', {
     setAfterRecovery: o => ipcRenderer.invoke('lock:setAfterRecovery', o),
     newCode: pw => ipcRenderer.invoke('lock:newCode', pw),
     disable: pw => ipcRenderer.invoke('lock:disable', pw),
-    lockUi: () => ipcRenderer.send('lock:ui')
+    lockUi: () => ipcRenderer.send('lock:ui'),
+    bioStatus: () => ipcRenderer.invoke('lock:bioStatus'),
+    bioEnable: () => ipcRenderer.invoke('lock:bioEnable'),
+    bioDisable: () => ipcRenderer.invoke('lock:bioDisable'),
+    bioUnlock: mode => ipcRenderer.invoke('lock:bioUnlock', mode)
   },
   ai: req => ipcRenderer.invoke('ai-chat', req),
   netGet: url => ipcRenderer.invoke('net-get', url),
