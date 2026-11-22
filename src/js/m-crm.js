@@ -170,15 +170,15 @@ registerModule({
   bar() {
     const L = CR().filter(c => !c.archived), due = L.filter(c => crmDue(c) !== null && crmDue(c) <= 0).length;
     return `<h1>Клиенты</h1><div class="stats"><span><b>${L.filter(c => c.kind === 'person').length}</b> ${plural(L.filter(c => c.kind === 'person').length, ['контакт', 'контакта', 'контактов'])}</span>${crmOrgs().length ? `<span><b>${crmOrgs().length}</b> ${plural(crmOrgs().length, ['организация', 'организации', 'организаций'])}</span>` : ''}${due ? `<span class="warn"><b>${due}</b> пора связаться</span>` : ''}</div><span class="spacer"></span>
-      <div class="nsearch"><input class="in" id="crq" value="${esc(CRF.q)}" placeholder="Имя, телефон, организация" aria-label="Поиск по клиентам"></div>
-      <button class="btn pri" data-act="crmNew">${ic('plus')} Контакт</button>`;
+      ${MOB() ? '' : `<div class="nsearch"><input class="in" id="crq" value="${esc(CRF.q)}" placeholder="Имя, телефон, организация" aria-label="Поиск по клиентам"></div>`}
+      <button class="btn pri" data-act="crmNew" aria-label="Новый контакт">${ic('plus')}<span class="hm"> Контакт</span></button>`;
   },
   render() {
     const L = crmList(); if (CRF.open && !crmOf(CRF.open)) CRF.open = null;
     if (!CRF.open && !MOB() && L.length) CRF.open = L[0].id;
     const c = crmOf(CRF.open), all = CR().filter(x => !x.archived), due = all.filter(x => crmDue(x) !== null && crmDue(x) <= 0).length;
     const chips = `<div class="chips cflt">${[['all', 'Все'], ['due', 'Пора связаться' + (due ? ' · ' + due : '')], ['org', 'Организации']].map(([k, l]) => `<button class="chip ${CRF.f === k ? 'on' : ''}" data-act="crmF" data-v="${k}">${l}</button>`).join('')}</div>`;
-    const list = `<div class="clist">${chips}${L.map(crmRow).join('') || `<div class="empty">${all.length ? 'Ничего не найдено' : 'Контактов пока нет'}</div>`}</div>`;
+    const list = `<div class="clist">${MOB() && all.length ? `<input class="in csearch" id="crq" value="${esc(CRF.q)}" placeholder="Поиск: имя, телефон, организация" aria-label="Поиск по клиентам">` : ''}${chips}${L.map(crmRow).join('') || `<div class="empty">${all.length ? 'Ничего не найдено' : 'Контактов пока нет'}</div>`}</div>`;
     const empty = `<div class="hempty">${ic('users')}<h2>Клиенты</h2><p>Храните контакты клиентов и организаций, записывайте звонки и встречи, назначайте, когда связаться, — Планер напомнит. Дни рождения попадут в «Важные даты».</p><button class="btn pri" data-act="crmNew">${ic('plus')} Первый контакт</button></div>`;
     if (MOB()) return c ? `<div class="scroll"><div class="cwrap one">${crmCard(c)}</div></div>` : `<div class="scroll">${all.length ? list : empty}</div>`;
     if (!all.length) return `<div class="scroll">${empty}</div>`;
