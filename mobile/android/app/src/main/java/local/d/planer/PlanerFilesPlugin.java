@@ -1,7 +1,17 @@
 package local.d.planer;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.provider.ContactsContract;
+import com.getcapacitor.JSArray;
+import com.getcapacitor.PermissionState;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.json.JSONArray;
 import android.os.Build;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyPermanentlyInvalidatedException;
@@ -23,7 +33,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 // Свой модуль: данные для виджета «Сегодня» на главном экране и вход по отпечатку пальца.
 // (Доступ к файлам телефона больше не нужен: совместные проекты работают через Яндекс Диск напрямую.)
-@CapacitorPlugin(name = "PlanerFiles")
+@CapacitorPlugin(name = "PlanerFiles", permissions = { @Permission(alias = "contacts", strings = { Manifest.permission.READ_CONTACTS }) })
 public class PlanerFilesPlugin extends Plugin {
     // Виджет «Сегодня»: приложение передаёт готовый список задач
     @PluginMethod
@@ -170,5 +180,56 @@ public class PlanerFilesPlugin extends Plugin {
             if (ks.containsAlias(BIO_KEY)) ks.deleteEntry(BIO_KEY);
         } catch (Exception ignored) { }
         call.resolve();
+    }
+
+    // ---------- Контакты телефона (импорт в «Клиенты») ----------
+    // Только чтение. Разрешение спрашивается при первом импорте; контакты никуда не отправляются.
+    @PluginMethod
+    public void contactsList(PluginCall call) {
+        if (getPermissionState("contacts") != PermissionState.GRANTED) { requestPermissionForAlias("contacts", call, "contactsPerm"); return; }
+        readContacts(call);
+    }
+
+    @PermissionCallback
+    private void contactsPerm(PluginCall call) {
+        if (getPermissionState("contacts") == PermissionState.GRANTED) readContacts(call);
+        else call.reject("Нет разрешения на доступ к контактам", "denied");
+    }
+
+    private void readContacts(PluginCall call) {
+        new Thread(() -> {
+            Cursor c = null;
+            try {
+                Map<String, JSObject> m = new LinkedHashMap<>();
+                Map<String, JSONArray> ph = new LinkedHashMap<>(), em = new LinkedHashMap<>();
+                String[] cols = { ContactsContract.Data.CONTACT_ID, ContactsContract.Data.MIMETYPE, ContactsContract.Data.DATA1, ContactsContract.Data.DATA2, ContactsContract.Data.DATA4, ContactsContract.Data.DISPLAY_NAME };
+                String sel = ContactsContract.Data.MIMETYPE + " IN (?,?,?,?,?,?)";
+                String[] args = { ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE, ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE,
+                    ContactsContract.CommonDataKinds.Organization.CONTENT_ITEM_TYPE, ContactsContract.CommonDataKinds.Event.CONTENT_ITEM_TYPE,
+                    ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE, ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE };
+                c = getContext().getContentResolver().query(ContactsContract.Data.CONTENT_URI, cols, sel, args, ContactsContract.Data.DISPLAY_NAME + " ASC");
+                if (c != null) {
+                    while (c.moveToNext()) {
+                        String id = c.getString(0), mime = c.getString(1), d1 = c.getString(2), d2 = c.getString(3), d4 = c.getString(4), name = c.getString(5);
+                        if (id == null) continue;
+                        JSObject o = m.get(id);
+                        if (o == null) { o = new JSObject(); o.put("id", id); o.put("name", name == null ? "" : name); m.put(id, o); ph.put(id, new JSONArray()); em.put(id, new JSONArray()); }
+                        if (d1 == null || d1.trim().isEmpty()) continue;
+                        if (ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE.equals(mime)) ph.get(id).put(d1);
+                        else if (ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE.equals(mime)) em.get(id).put(d1);
+                        else if (ContactsContract.CommonDataKinds.Organization.CONTENT_ITEM_TYPE.equals(mime)) { o.put("org", d1); if (d4 != null) o.put("title", d4); }
+                        else if (ContactsContract.CommonDataKinds.Event.CONTENT_ITEM_TYPE.equals(mime)) { if (String.valueOf(ContactsContract.CommonDataKinds.Event.TYPE_BIRTHDAY).equals(d2)) o.put("bday", d1); }
+                        else if (ContactsContract.CommonDataKinds.StructuredPostal.CONTENT_ITEM_TYPE.equals(mime)) o.put("addr", d1);
+                        else if (ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE.equals(mime)) o.put("note", d1);
+                    }
+                }
+                JSArray out = new JSArray();
+                for (Map.Entry<String, JSObject> e : m.entrySet()) { JSObject o = e.getValue(); o.put("phones", ph.get(e.getKey())); o.put("emails", em.get(e.getKey())); out.put(o); }
+                JSObject r = new JSObject(); r.put("contacts", out);
+                call.resolve(r);
+            } catch (Exception ex) {
+                call.reject("Не удалось прочитать контакты: " + ex.getMessage(), "read");
+            } finally { if (c != null) c.close(); }
+        }).start();
     }
 }

@@ -385,6 +385,8 @@
       },
       lockUi: () => { readLock().then(L => { if (L) uiLocked = true; }); }
     },
+    // контакты телефона для импорта в «Клиенты» (только чтение)
+    phoneContacts: async () => { try { const r = await PF.contactsList(); return { ok: true, list: r.contacts || [] }; } catch (e) { return { ok: false, denied: e && e.code === 'denied', error: (e && e.message) || 'Не удалось прочитать контакты' }; } },
     ai: async req => {
       try {
         const r = await Http.request({ url: 'https://llm.api.cloud.yandex.net/v1/chat/completions', method: 'POST', responseType: 'text', connectTimeout: 30000, readTimeout: 120000,

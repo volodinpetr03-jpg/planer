@@ -1504,3 +1504,18 @@ body.mob .stats .warn{display:none}
 .crmdash .lrow{display:flex;align-items:center;gap:.6rem;cursor:pointer}.crmdash .am{font-weight:700;white-space:nowrap}
 body.mob .crmdash .cdk{grid-template-columns:minmax(0,1fr)}
 .cmoney{margin-bottom:0}
+/* CRM: импорт */
+.impsrc{display:grid;gap:.6rem;margin-bottom:.8rem}
+.impbtn{display:grid;grid-template-columns:auto 1fr;gap:.15rem .8rem;align-items:center;text-align:left;background:var(--panel);border:1px solid var(--line2);border-radius:.9rem;padding:.9rem 1rem;color:var(--ink);font:inherit;cursor:pointer}
+.impbtn:hover{border-color:var(--acc)}.impbtn .ic{grid-row:span 2;width:1.6rem;height:1.6rem;color:var(--acc)}.impbtn span{color:var(--mute);font-size:.88rem}
+.impmap{display:flex;gap:.6rem;overflow-x:auto;padding:.4rem 0 .8rem}
+.impcol{flex:0 0 12rem;background:var(--panel);border:1px solid var(--line);border-radius:.8rem;padding:.6rem;display:grid;gap:.4rem;align-content:start}
+.impch{font-weight:700;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.impsm{display:grid;gap:.15rem}.impsm span{color:var(--mute);font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.impdup{margin-top:.4rem}.impdup .chk{display:flex;gap:.5rem;align-items:center;margin:.2rem 0}
+.implh{display:flex;gap:.5rem;flex-wrap:wrap}.implh .in{flex:1 1 12rem}
+.impl{max-height:52vh;overflow-y:auto;border:1px solid var(--line);border-radius:.8rem;padding:.3rem}
+.impi{display:flex;align-items:center;gap:.7rem;padding:.5rem .6rem;border-radius:.6rem;cursor:pointer}
+.impi:hover{background:var(--hover)}.impi input{width:1.15rem;height:1.15rem;flex:none}
+.impi .tx{flex:1;min-width:0;display:grid}.impi .tx small{color:var(--mute);font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.impi em{font-style:normal;font-size:.75rem;font-weight:700;color:var(--mid);white-space:nowrap}.impi.dup .tx b{color:var(--ink2)}
