@@ -1519,3 +1519,14 @@ body.mob .crmdash .cdk{grid-template-columns:minmax(0,1fr)}
 .impi:hover{background:var(--hover)}.impi input{width:1.15rem;height:1.15rem;flex:none}
 .impi .tx{flex:1;min-width:0;display:grid}.impi .tx small{color:var(--mute);font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .impi em{font-style:normal;font-size:.75rem;font-weight:700;color:var(--mid);white-space:nowrap}.impi.dup .tx b{color:var(--ink2)}
+/* CRM: отчёты и письма */
+.rrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(6rem,40%);gap:.8rem;align-items:center;padding:.45rem 0;border-top:1px solid var(--line)}
+.rrow:first-of-type{border-top:0}
+.rrow .rl{display:grid;min-width:0}.rrow .rl b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rrow .rl small{color:var(--mute);font-size:.84rem}.rrow .rl em{font-style:normal;color:var(--ink2);font-weight:600}
+.rbar{height:.6rem;background:var(--card2);border-radius:99px;overflow:hidden}.rbar i{display:block;height:100%;background:var(--c);border-radius:99px}
+.mailta{width:100%;min-height:14rem;font:inherit;line-height:1.45;resize:vertical}
+.mailsh .cnxt{flex-wrap:wrap}
+.mailsh .shf{flex-wrap:wrap;gap:.5rem}
+body.mob .mailta{min-height:16rem}
+body.mob .rrow{grid-template-columns:minmax(0,1fr);gap:.3rem}
+.mailsh{max-height:80vh;overflow-y:auto}

@@ -276,8 +276,9 @@ function pipeRead() {
   const M = MODULES.find(m => m.id === 'crm'); if (!M) return;
   const bar0 = M.bar, render0 = M.render, search0 = M.search;
   if (!CRF.tab) CRF.tab = 'deals';
-  const tabs = () => `<div class="seg ctabs" role="tablist">${[['deals', 'Сделки', 'deal'], ['contacts', 'Контакты', 'users']].map(([k, l, i]) => `<button class="${CRF.tab === k ? 'on' : ''}" data-act="crmTab" data-v="${k}" role="tab" aria-selected="${CRF.tab === k}">${ic(i)} ${l}</button>`).join('')}</div>`;
+  const tabs = () => `<div class="seg ctabs" role="tablist">${[['deals', 'Сделки', 'deal'], ['contacts', 'Контакты', 'users'], ['report', 'Отчёты', 'chart']].map(([k, l, i]) => `<button class="${CRF.tab === k ? 'on' : ''}" data-act="crmTab" data-v="${k}" role="tab" aria-selected="${CRF.tab === k}" aria-label="${l}">${ic(i)}<span class="${CRF.tab === k ? '' : 'hm'}"> ${l}</span></button>`).join('')}</div>`;
   M.bar = function () {
+    if (CRF.tab === 'report' && typeof crmRepBar === 'function') return `${MOB() ? '' : '<h1>Клиенты</h1>'}${tabs()}<span class="spacer"></span>${crmRepBar()}`;
     if (CRF.tab !== 'deals') return bar0().replace('<h1>Клиенты</h1>', (MOB() ? '' : '<h1>Клиенты</h1>') + tabs());
     const P = CRM().pipes;
     return `${MOB() ? '' : '<h1>Клиенты</h1>'}${tabs()}<span class="spacer"></span>
@@ -286,6 +287,7 @@ function pipeRead() {
       <button class="btn pri" data-act="dealNew" aria-label="Новая сделка">${ic('plus')}<span class="hm"> Сделка</span></button>`;
   };
   M.render = function () {
+    if (CRF.tab === 'report' && typeof crmRepHtml === 'function') return `<div class="scroll dscroll">${crmRepHtml()}</div>`;
     if (CRF.tab !== 'deals') return render0();
     if (!DL().length && !CRD.att) return `<div class="scroll"><div class="hempty">${ic('deal')}<h2>Сделки</h2><p>Ведите заявки и сделки по этапам: заявка → переговоры → КП → договор. У каждой сделки — сумма, клиент и следующий шаг с напоминанием. Выигранная сделка сама записывает доход в Бюджет.</p><button class="btn pri" data-act="dealNew">${ic('plus')} Первая сделка</button></div></div>`;
     return `<div class="scroll dscroll">${dealsBoard()}</div>`;
