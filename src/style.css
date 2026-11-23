@@ -1496,3 +1496,11 @@ body.mob .ctabs{margin:0}
 .dstabs .chip{flex:none}
 .csearch{margin:0 .2rem .5rem;width:auto}
 body.mob .stats .warn{display:none}
+/* CRM: обзор и деньги клиента */
+.crmdash .cdk{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem;margin-bottom:.9rem}
+.crmdash .cdk>div{background:var(--card);border:1px solid var(--line);border-radius:.8rem;padding:.6rem .8rem;display:grid}
+.crmdash .cdk span{color:var(--mute);font-size:.82rem}.crmdash .cdk b{font-size:1.2rem;font-variant-numeric:tabular-nums}
+.cdh{font-size:.95rem;margin:.2rem 0 .4rem;color:var(--ink2)}.cdh small{color:var(--mute);font-weight:400}
+.crmdash .lrow{display:flex;align-items:center;gap:.6rem;cursor:pointer}.crmdash .am{font-weight:700;white-space:nowrap}
+body.mob .crmdash .cdk{grid-template-columns:minmax(0,1fr)}
+.cmoney{margin-bottom:0}
